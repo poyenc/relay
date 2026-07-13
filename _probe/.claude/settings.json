@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "bash /home/AMD/poyechen/workspace/repo/supervised-claude/_probe/dump.sh UserPromptSubmit" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "bash /home/AMD/poyechen/workspace/repo/supervised-claude/_probe/dump.sh PreToolUse" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "bash /home/AMD/poyechen/workspace/repo/supervised-claude/_probe/dump.sh PostToolUse" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "bash /home/AMD/poyechen/workspace/repo/supervised-claude/_probe/dump.sh Stop" } ] }
+    ],
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "bash /home/AMD/poyechen/workspace/repo/supervised-claude/_probe/dump.sh SessionStart" } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "bash /home/AMD/poyechen/workspace/repo/supervised-claude/_probe/dump.sh SessionEnd" } ] }
+    ]
+  }
+}
