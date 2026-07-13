@@ -126,7 +126,7 @@ handle_pending_rotation() {
     pct="$(relay_state_get "$RUN_DIR" '.pending_pct')"
     # Caps are evaluated at the rotation edge: if the NEXT generation would breach
     # a cap, stop instead of relaunching.
-    cap="$(relay_cap_hit "$RUN_DIR" "$(_run_elapsed_s)" "$(relay_state_get "$RUN_DIR" '.cost_usd // 0')")"
+    cap="$(relay_cap_hit "$RUN_DIR" "$(_run_elapsed_s)" "$(relay_cost_from_statusline "$RUN_DIR")")"
     if [ "$cap" != "none" ]; then
       rm -f "$RUN_DIR/$marker"
       stop_run "cap:$cap"

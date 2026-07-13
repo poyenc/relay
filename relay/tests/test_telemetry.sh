@@ -24,4 +24,10 @@ assert_eq "$(relay_context_pct "$rd" tests/fixtures/transcript.jsonl)" "33" "com
 cp tests/fixtures/statusline.json "$rd/statusline.json"
 assert_eq "$(relay_context_pct "$rd" tests/fixtures/transcript.jsonl)" "72" "combined prefers tee"
 
+# cost from statusline (for --max-cost); fixture has total_cost_usd=1.23
+assert_eq "$(relay_cost_from_statusline "$rd")" "1.23" "cost read from statusline"
+# missing statusline -> 0
+rd_nocost="$(mktemp -d)"
+assert_eq "$(relay_cost_from_statusline "$rd_nocost")" "0" "no statusline -> cost 0"
+
 finish

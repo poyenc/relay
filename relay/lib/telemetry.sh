@@ -33,6 +33,16 @@ relay_pct_from_transcript() {
   printf '%s\n' "$(( tokens * 100 / RELAY_CTX_WINDOW ))"
 }
 
+# Cumulative cost in USD from the statusline tee (.cost.total_cost_usd), for
+# --max-cost. Echoes 0 when unavailable. Cost only grows, so staleness is benign.
+relay_cost_from_statusline() {
+  local f="$1/statusline.json" cost
+  [ -f "$f" ] || { echo 0; return 0; }
+  cost="$(jq -r '.cost.total_cost_usd // 0' "$f" 2>/dev/null)"
+  [ -n "$cost" ] || cost=0
+  printf '%s\n' "$cost"
+}
+
 relay_context_pct() {
   local rd="$1" tp="$2" pct
   pct="$(relay_pct_from_statusline "$rd")"

@@ -99,8 +99,10 @@ relay_cmd_stop() {  # <id-or-prefix>
   pid="$(relay_state_get "$rd" '.supervisor_pid')"
   # kill the hosted session (session-scoped only; kill-server is banned)
   [ -n "$sess" ] && "$RELAY_TMUX" kill-session -t "$sess" 2>/dev/null || true
-  # signal the supervisor to terminate; its EXIT trap deletes the run dir
-  if [ -n "$pid" ] && [ "$pid" != "null" ]; then
+  # signal the supervisor to terminate; its EXIT trap deletes the run dir.
+  # Guard: only kill a real positive pid — `kill 0` would signal the whole
+  # process group (the placeholder pid before the launcher patches in the real one).
+  if [ -n "$pid" ] && [ "$pid" != "null" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
     kill "$pid" 2>/dev/null || true
   fi
   echo "relay: stopped $(basename "$rd")."

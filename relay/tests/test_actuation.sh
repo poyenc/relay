@@ -55,6 +55,19 @@ assert_contains "$(cat "$rd3/supervisor.log")" "STOPPED reason=cap:gen" "cap STO
 assert_contains "$(cat "$log3")" "kill-session -t relay-test" "session killed on cap stop"
 assert_eq "$(grep -c 'respawn-pane' "$log3")" "0" "no respawn when cap hit"
 
+# ---------- 3b. cost cap at rotation edge -> STOPPED (reads statusline cost) ----------
+rd3b="$(mktemp -d)"; mkdir -p "$rd3b/gen-1"
+relay_state_init "$rd3b" 60 "" "" 1.0 $$        # max_cost=1.0
+seed_live "$rd3b" true
+printf '{"context_window":{"used_percentage":70},"cost":{"total_cost_usd":2.50}}' > "$rd3b/statusline.json"
+relay_state_set "$rd3b" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70'
+: > "$rd3b/gen-1/handoff.ready"
+log3b="$rd3b/tmux.log"; : > "$log3b"
+FAKE_TMUX_LOG="$log3b" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
+  bash bin/relay-supervisor.sh --run-dir "$rd3b" --once
+assert_eq "$(relay_state_get "$rd3b" '.generation')" "1" "gen NOT bumped when cost cap hit"
+assert_contains "$(cat "$rd3b/supervisor.log")" "STOPPED reason=cap:cost" "cost cap STOP logged"
+
 # ---------- 4. liveness: session gone + seen before + not pending -> STOPPED ----------
 rd4="$(mktemp -d)"
 relay_state_init "$rd4" 60 "" "" "" $$
