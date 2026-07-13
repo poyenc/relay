@@ -52,5 +52,18 @@ out="$(RELAY_STATE="$work/s2.json" bash "$sl2" <<<'{"a":1}')"
 assert_contains "$out" 'got={"a":1}' "no-shebang body still runs"
 assert_file_exists "$work/s2.json" "no-shebang tee wrote state"
 
+# --- byte-identity: input with multiple trailing newlines is re-fed unchanged ---
+sl3="$work/bytes.sh"
+cat > "$sl3" <<'EOF'
+#!/usr/bin/env bash
+cat > "$BODY_OUT"
+EOF
+relay_cmd_install_statusline "$sl3" >/dev/null 2>&1
+in="$work/in.bin"; bodyout="$work/body.bin"
+printf 'line1\nline2\n\n\n' > "$in"          # 2 extra trailing newlines
+BODY_OUT="$bodyout" RELAY_STATE="$work/s3.json" bash "$sl3" < "$in"
+assert_eq "$(cksum < "$bodyout")" "$(cksum < "$in")" "re-fed stdin is byte-identical (trailing newlines preserved)"
+assert_eq "$(cksum < "$work/s3.json")" "$(cksum < "$in")" "teed state is byte-identical to input"
+
 rm -rf "$work"
 finish

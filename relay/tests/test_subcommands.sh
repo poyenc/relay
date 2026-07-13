@@ -10,7 +10,10 @@ FAKE="$PWD/tests/fake-tmux.sh"; chmod +x "$FAKE"
 export RELAY_TMUX="$FAKE"
 export TMPDIR; TMPDIR="$(mktemp -d)"    # isolate run root
 
-# seed two live runs + one dead run under the isolated root
+# seed two live runs + one dead run under the isolated root. A "live" run needs a
+# real process whose argv carries its run dir (relay_pid_is_supervisor requirement);
+# fake-supervisor.sh provides that. Helpers' stdio is redirected so they don't hold
+# this test's stdout pipe open.
 mk_run() {  # <suffix> <pid> <gen>
   local rd; rd="$(relay_root)/run-2026-$1"; mkdir -p "$rd"
   relay_state_init "$rd" 60 "" "" "" "$2"
@@ -20,9 +23,14 @@ mk_run() {  # <suffix> <pid> <gen>
   printf '%s' "$rd"
 }
 mkdir -p "$(relay_root)"; chmod 700 "$(relay_root)"
-sleep 30 & LIVE1=$!; live1_rd="$(mk_run aaaa "$LIVE1" 3)"
-sleep 30 & LIVE2=$!; live2_rd="$(mk_run bbbb "$LIVE2" 1)"
+live1_rd="$(relay_root)/run-2026-aaaa"; mkdir -p "$live1_rd"
+bash tests/fake-supervisor.sh --run-dir "$live1_rd" >/dev/null 2>&1 & LIVE1=$!
+live1_rd="$(mk_run aaaa "$LIVE1" 3)"
+live2_rd="$(relay_root)/run-2026-bbbb"; mkdir -p "$live2_rd"
+bash tests/fake-supervisor.sh --run-dir "$live2_rd" >/dev/null 2>&1 & LIVE2=$!
+live2_rd="$(mk_run bbbb "$LIVE2" 1)"
 dead_rd="$(mk_run cccc 999999 2)"
+trap 'kill "$LIVE1" "$LIVE2" 2>/dev/null' EXIT
 
 # --- resolver: unique prefix match ---
 assert_eq "$(relay_resolve_run_id run-2026-aa)" "$live1_rd" "unique prefix resolves"

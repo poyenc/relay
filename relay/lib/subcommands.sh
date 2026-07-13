@@ -79,15 +79,18 @@ relay_cmd_install_statusline() {  # <statusline-file>
   echo "relay: statusline tee installed in $f (backup: $f.relay-bak)"
 }
 
-# The injected block: capture stdin, atomically tee to $RELAY_STATE if set, then
-# re-feed the identical stdin so the rest of the user's script is unaffected.
+# The injected block: capture stdin to a temp file, atomically tee to $RELAY_STATE
+# if set, then re-feed the BYTE-IDENTICAL stdin (via `exec <file`, not a here-string —
+# `$(cat)`+`<<<` would mangle trailing newlines) so the user's script is unaffected.
 _relay_tee_block() {
   cat <<'TEE'
 # >>> relay statusline tee >>>
 if [ -n "${RELAY_STATE:-}" ]; then
-  _relay_in="$(cat)"
-  printf '%s' "$_relay_in" > "$RELAY_STATE.tmp" 2>/dev/null && mv "$RELAY_STATE.tmp" "$RELAY_STATE" 2>/dev/null
-  exec <<<"$_relay_in"
+  _relay_tmp="$(mktemp)"
+  cat > "$_relay_tmp"
+  cp "$_relay_tmp" "$RELAY_STATE.tmp" 2>/dev/null && mv "$RELAY_STATE.tmp" "$RELAY_STATE" 2>/dev/null
+  exec < "$_relay_tmp"
+  rm -f "$_relay_tmp"
 fi
 # <<< relay tee end <<<
 TEE
