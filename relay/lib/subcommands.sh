@@ -48,6 +48,51 @@ relay_cmd_attach() {  # <id-or-prefix>
   fi
 }
 
+RELAY_TEE_SENTINEL="# >>> relay statusline tee >>>"
+
+# Insert a one-time, no-op-safe tee into the user's statusline command file so it
+# writes the raw statusline JSON to $RELAY_STATE. Transparent when RELAY_STATE is
+# unset (plain claude). Idempotent; backs up the original to <file>.relay-bak.
+relay_cmd_install_statusline() {  # <statusline-file>
+  local f="$1"
+  [ -f "$f" ] || { echo "relay: no such file: $f" >&2; return 1; }
+  if grep -qF "$RELAY_TEE_SENTINEL" "$f"; then
+    echo "relay: tee already installed in $f"; return 0
+  fi
+  cp -p "$f" "$f.relay-bak"
+
+  local tmp; tmp="$(mktemp)"
+  local first; first="$(head -1 "$f")"
+  {
+    if printf '%s' "$first" | grep -q '^#!'; then
+      printf '%s\n' "$first"
+      _relay_tee_block
+      tail -n +2 "$f"
+    else
+      _relay_tee_block
+      cat "$f"
+    fi
+  } > "$tmp"
+  # preserve mode
+  chmod "$(stat -c '%a' "$f")" "$tmp"
+  mv "$tmp" "$f"
+  echo "relay: statusline tee installed in $f (backup: $f.relay-bak)"
+}
+
+# The injected block: capture stdin, atomically tee to $RELAY_STATE if set, then
+# re-feed the identical stdin so the rest of the user's script is unaffected.
+_relay_tee_block() {
+  cat <<'TEE'
+# >>> relay statusline tee >>>
+if [ -n "${RELAY_STATE:-}" ]; then
+  _relay_in="$(cat)"
+  printf '%s' "$_relay_in" > "$RELAY_STATE.tmp" 2>/dev/null && mv "$RELAY_STATE.tmp" "$RELAY_STATE" 2>/dev/null
+  exec <<<"$_relay_in"
+fi
+# <<< relay tee end <<<
+TEE
+}
+
 relay_cmd_stop() {  # <id-or-prefix>
   local rd sess pid; rd="$(relay_resolve_run_id "$1")" || return 1
   sess="$(relay_state_get "$rd" '.tmux_session')"
