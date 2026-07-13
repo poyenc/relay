@@ -1,0 +1,5 @@
+{
+  "name": "relay",
+  "description": "relay session-rotation adapter: Stop + SessionStart hooks that delegate rotation to the relay supervisor",
+  "version": "0.1.0"
+}
