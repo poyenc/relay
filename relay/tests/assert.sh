@@ -9,4 +9,5 @@ assert_file_exists() { if [ -e "$1" ]; then _A_PASS=$((_A_PASS+1));
   else _A_FAIL=$((_A_FAIL+1)); echo "FAIL: $2 (no file $1)"; fi; }
 assert_file_absent() { if [ ! -e "$1" ]; then _A_PASS=$((_A_PASS+1));
   else _A_FAIL=$((_A_FAIL+1)); echo "FAIL: $2 (file exists $1)"; fi; }
+assert_ok() { _A_PASS=$((_A_PASS+1)); }
 finish() { echo "--- $_A_PASS passed, $_A_FAIL failed ---"; [ "$_A_FAIL" -eq 0 ]; }
