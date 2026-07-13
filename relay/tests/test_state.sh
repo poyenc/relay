@@ -7,6 +7,7 @@ source lib/state.sh
 rd="$(mktemp -d)"
 relay_state_init "$rd" 60 "" "" "" 4242
 assert_file_exists "$rd/state.json" "state.json written"
+assert_eq "$(relay_state_get "$rd" '.run_id')" "$(basename "$rd")" "run_id is the run-dir basename"
 assert_eq "$(relay_state_get "$rd" '.generation')" "1" "gen starts at 1"
 assert_eq "$(relay_state_get "$rd" '.policy.rotate_at_pct')" "60" "threshold stored"
 assert_eq "$(relay_state_get "$rd" '.policy.max_gen')" "null" "empty cap -> null"

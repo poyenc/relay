@@ -10,10 +10,13 @@ assert_eq "$out" "" "no-op empty stdout"
 
 # with run dir: simulate supervisor answering {} (continue)
 rd="$(mktemp -d)"
+payload='{"hook_event_name":"Stop","transcript_path":"/x"}'
 ( sleep 0.3; printf '{}' > "$rd/stop-response.json" ) &
-out="$(RELAY_RUN_DIR="$rd" printf '{"hook_event_name":"Stop","transcript_path":"/x"}' | RELAY_RUN_DIR="$rd" bash hooks/stop-hook.sh)"
+out="$(RELAY_RUN_DIR="$rd" bash -c 'cat | RELAY_RUN_DIR="'"$rd"'" bash hooks/stop-hook.sh' <<<"$payload")"
 assert_eq "$out" "" "continue -> empty stdout"
 assert_file_exists "$rd/stop-request.json" "request was written"
+# byte-content: the hook must forward the EXACT payload the supervisor will parse
+assert_eq "$(cat "$rd/stop-request.json")" "$payload" "request bytes match payload verbatim"
 wait
 
 # with run dir: supervisor answers a block decision

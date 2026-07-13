@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Policy decisions. Threshold at each turn; caps at rotation edge.
 relay_should_rotate() {
-  local rd="$1" pct="$2" sha="$3"
+  local rd="$1" pct="$2" stop_hook_active="$3"
   [ -n "$pct" ] || { echo continue; return; }
-  [ "$sha" = "true" ] && { echo continue; return; }
+  [ "$stop_hook_active" = "true" ] && { echo continue; return; }
   [ "$(relay_state_get "$rd" '.rotation_pending')" = "true" ] && { echo continue; return; }
   local thr; thr="$(relay_state_get "$rd" '.policy.rotate_at_pct')"
   if [ "$pct" -ge "$thr" ]; then echo rotate; else echo continue; fi

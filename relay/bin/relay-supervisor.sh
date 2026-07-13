@@ -31,6 +31,27 @@ handle_stop_request() {
   fi
   tp="$(printf '%s' "$payload" | jq -r '.transcript_path // ""')"
   sha="$(printf '%s' "$payload" | jq -r '.stop_hook_active // false')"
+
+  # Re-arm: if a rotation is already pending but the handoff marker hasn't appeared,
+  # a fresh idle Stop means the earlier block was missed (hook timed out). Re-deliver
+  # the instruction now instead of returning {} and waiting out marker_timeout —
+  # closes the dead-air window. Loop-safety: never re-block when stop_hook_active.
+  if [ "$(relay_state_get "$RUN_DIR" '.rotation_pending')" = "true" ]; then
+    marker="$(relay_state_get "$RUN_DIR" '.pending_marker')"
+    if [ "$sha" != "true" ] && [ ! -f "$RUN_DIR/$marker" ]; then
+      gen="${marker#gen-}"; gen="${gen%/*}"
+      relay_handoff_instruction "$RUN_DIR/gen-$gen/handoff.md" "$RUN_DIR/$marker" \
+        | jq -Rsc '{decision:"block", reason: .}' > "$RUN_DIR/stop-response.json.tmp"
+      mv "$RUN_DIR/stop-response.json.tmp" "$RUN_DIR/stop-response.json"
+      log "ROTATE_REARM gen=$gen"
+    else
+      printf '{}' > "$RUN_DIR/stop-response.json.tmp"
+      mv "$RUN_DIR/stop-response.json.tmp" "$RUN_DIR/stop-response.json"
+    fi
+    rm -f "$RUN_DIR/stop-request.json"
+    return 0
+  fi
+
   pct="$(relay_context_pct "$RUN_DIR" "$tp")"
   decision="$(relay_should_rotate "$RUN_DIR" "$pct" "$sha")"
   if [ "$decision" = "rotate" ]; then

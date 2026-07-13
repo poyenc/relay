@@ -10,8 +10,9 @@ relay_state_init() {
     --argjson maxrt "${maxrt:-null}" \
     --argjson maxcost "${maxcost:-null}" \
     --argjson pid "$pid" \
+    --arg run_id "$(basename "$rd")" \
     --arg ts "$(_relay_now)" \
-    '{run_id: ($ts), generation: 1, supervisor_pid: $pid,
+    '{run_id: $run_id, generation: 1, supervisor_pid: $pid,
       policy: {rotate_at_pct: $rotate, max_gen: $maxgen,
                max_runtime_s: $maxrt, max_cost_usd: $maxcost},
       rotation_pending: false, pending_marker: null,
