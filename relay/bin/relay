@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# relay — run Claude Code as a long-lived, self-rotating session.
+# Usage: relay [relay flags] -- [claude args]   (see --help / design spec)
+set -uo pipefail
+
+RELAY_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$RELAY_HOME/lib/rundir.sh"
+source "$RELAY_HOME/lib/state.sh"
+source "$RELAY_HOME/lib/cli.sh"
+
+: "${RELAY_TMUX:=tmux}"
+: "${RELAY_CLAUDE_BIN:=claude}"
+: "${RELAY_SUPERVISOR_BIN:=$RELAY_HOME/bin/relay-supervisor.sh}"
+
+# Build a shell-safe launch command string (eval-able back to the exact argv).
+relay_build_launch_cmd() {  # <claude_bin> <plugin_dir> [claude args...]
+  local bin="$1" plug="$2"; shift 2
+  local out; printf -v out '%q --plugin-dir %q' "$bin" "$plug"
+  local a
+  for a in "$@"; do printf -v out '%s %q' "$out" "$a"; done
+  printf '%s' "$out"
+}
+
+relay_die() { echo "relay: $*" >&2; exit 2; }
+
+relay_cmd_launch() {
+  local rd sess run_id maxgen maxrt maxcost cmd
+  relay_prune_dead
+  rd="$(relay_create_rundir)"
+  run_id="$(basename "$rd")"
+  sess="relay-$run_id"
+
+  # empty caps -> "" so relay_state_init writes JSON null
+  maxgen="$RELAY_OPT_MAX_GEN"; maxrt="$RELAY_OPT_MAX_RUNTIME_S"; maxcost="$RELAY_OPT_MAX_COST"
+
+  # init state first (placeholder pid) so the daemon never reads a missing file
+  relay_state_init "$rd" "$RELAY_OPT_ROTATE_AT" "$maxgen" "$maxrt" "$maxcost" 0
+  local auto="true"; [ "$RELAY_OPT_AUTO_CONTINUE" = "1" ] || auto="false"
+  cmd="$(relay_build_launch_cmd "$RELAY_CLAUDE_BIN" "$RELAY_HOME" "${RELAY_CLAUDE_ARGS[@]+"${RELAY_CLAUDE_ARGS[@]}"}")"
+  # record launch metadata the supervisor needs to actuate rotations (arg-safe via --arg)
+  jq --arg c "$cmd" --arg run "$run_id" --arg sess "$sess" --argjson auto "$auto" \
+     '.run_id=$run | .tmux_session=$sess | .auto_continue=$auto | .launch_cmd=$c' \
+     "$rd/state.json" > "$rd/state.json.tmp" && mv "$rd/state.json.tmp" "$rd/state.json"
+
+  # start the supervisor daemon (owns rotation + lifecycle + run-dir teardown)
+  # Detach the daemon's stdio to its log — it must not write to the user's
+  # terminal, and leaving fd1 open to a parent `$(relay …)` would deadlock it.
+  RELAY_MARKER_TIMEOUT="$RELAY_OPT_MARKER_TIMEOUT" RELAY_TMUX="$RELAY_TMUX" \
+    "$RELAY_SUPERVISOR_BIN" --run-dir "$rd" >>"$rd/supervisor.log" 2>&1 &
+  local sup=$!
+  jq --argjson pid "$sup" '.supervisor_pid=$pid' "$rd/state.json" \
+     > "$rd/state.json.tmp" && mv "$rd/state.json.tmp" "$rd/state.json"
+
+  # create the tmux session hosting claude, with RELAY_* env
+  "$RELAY_TMUX" new-session -d -s "$sess" \
+    -e "RELAY_RUN_DIR=$rd" \
+    -e "RELAY_STATE=$rd/statusline.json" \
+    "$cmd"
+
+  echo "relay: run $run_id started (pid $sup)."
+  echo "relay: attach with:  relay --attach $run_id"
+  echo "relay: stop with:    relay --stop $run_id"
+
+  [ "${RELAY_NO_ATTACH:-0}" = "1" ] && return 0
+  relay_attach_session "$sess"
+}
+
+# Attach the user's terminal to a session; honor nested-tmux (switch-client).
+relay_attach_session() {  # <session>
+  local sess="$1"
+  if [ -n "${TMUX:-}" ]; then
+    echo "relay: (nested tmux detected — switching client to $sess)" >&2
+    "$RELAY_TMUX" switch-client -t "$sess"
+  else
+    "$RELAY_TMUX" attach-session -t "$sess"
+  fi
+}
+
+relay_main() {
+  relay_parse_args "$@" || relay_die "$RELAY_PARSE_ERR"
+  case "$RELAY_MODE" in
+    launch)             relay_cmd_launch ;;
+    list)               relay_cmd_list ;;
+    attach)             relay_cmd_attach "$RELAY_ARG_ID" ;;
+    stop)               relay_cmd_stop "$RELAY_ARG_ID" ;;
+    status)             relay_cmd_status "$RELAY_ARG_ID" ;;
+    install-statusline) relay_cmd_install_statusline "$RELAY_ARG_ID" ;;
+    *)                  relay_die "internal: unknown mode $RELAY_MODE" ;;
+  esac
+}
+
+# Subcommand implementations live in lib/subcommands.sh (sourced if present).
+[ -f "$RELAY_HOME/lib/subcommands.sh" ] && source "$RELAY_HOME/lib/subcommands.sh"
+
+# Run only when executed, not when sourced (tests source this file).
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  relay_main "$@"
+fi
