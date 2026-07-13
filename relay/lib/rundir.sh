@@ -4,7 +4,7 @@ relay_root() { printf '%s/relay-%s' "${TMPDIR:-/tmp}" "$(id -u)"; }
 
 relay_create_rundir() {
   local root; root="$(relay_root)"
-  mkdir -p "$root"; chmod 700 "$root"
+  mkdir -m 700 -p "$root"
   mktemp -d "$root/run-$(date +%Y%m%d)-XXXXXX"
 }
 

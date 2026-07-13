@@ -22,6 +22,11 @@ handle_stop_request() {
   [ -f "$RUN_DIR/stop-request.json" ] || return 0
   local payload tp sha pct decision gen marker
   payload="$(cat "$RUN_DIR/stop-request.json")"
+  if ! printf '%s' "$payload" | jq empty 2>/dev/null; then
+    log "STOP_REQUEST_INVALID reason=malformed_json"
+    rm -f "$RUN_DIR/stop-request.json"
+    return 0
+  fi
   tp="$(printf '%s' "$payload" | jq -r '.transcript_path // ""')"
   sha="$(printf '%s' "$payload" | jq -r '.stop_hook_active // false')"
   pct="$(relay_context_pct "$RUN_DIR" "$tp")"
@@ -67,7 +72,11 @@ handle_pending_rotation() {
   fi
 }
 
-iterate() { handle_stop_request; handle_pending_rotation; }
+iterate() {
+  handle_stop_request || log "ITERATE_ERROR stage=handle_stop_request rc=$?"
+  handle_pending_rotation || log "ITERATE_ERROR stage=handle_pending_rotation rc=$?"
+  return 0
+}
 
 if [ "$ONCE" -eq 1 ]; then iterate; exit 0; fi
 trap 'rm -rf "$RUN_DIR"' EXIT
