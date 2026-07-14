@@ -34,7 +34,7 @@ relay_state_set "$rd" '.policy.max_runtime_s=null | .policy.max_cost_usd=1.0'
 assert_eq "$(relay_cap_hit "$rd" 0 1.5)" "cost" "cost cap hit"
 assert_eq "$(relay_cap_hit "$rd" 0 0.5)" "none" "cost within"
 
-# SECURITY: cost is statusline-derived (Claude's process) — must be treated as awk
+# SECURITY: cost is statusline-derived (Claude's process) - must be treated as awk
 # DATA, never code. A crafted cost must not execute and must not falsely trip the cap.
 rm -f /tmp/relay-policy-pwned
 inj='system("touch /tmp/relay-policy-pwned")+0'

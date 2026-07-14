@@ -41,7 +41,7 @@ relay_cmd_attach() {  # <id-or-prefix>
   local rd sess; rd="$(relay_resolve_run_id "$1")" || return 1
   sess="$(relay_state_get "$rd" '.tmux_session')"
   if [ -n "${TMUX:-}" ]; then
-    echo "relay: (nested tmux — switching client to $sess)" >&2
+    echo "relay: (nested tmux - switching client to $sess)" >&2
     "$RELAY_TMUX" switch-client -t "$sess"
   else
     "$RELAY_TMUX" attach-session -t "$sess"
@@ -80,7 +80,7 @@ relay_cmd_install_statusline() {  # <statusline-file>
 }
 
 # The injected block: capture stdin to a temp file, atomically tee to $RELAY_STATE
-# if set, then re-feed the BYTE-IDENTICAL stdin (via `exec <file`, not a here-string —
+# if set, then re-feed the BYTE-IDENTICAL stdin (via `exec <file`, not a here-string -
 # `$(cat)`+`<<<` would mangle trailing newlines) so the user's script is unaffected.
 _relay_tee_block() {
   cat <<'TEE'
@@ -103,7 +103,7 @@ relay_cmd_stop() {  # <id-or-prefix>
   # kill the hosted session (session-scoped only; kill-server is banned)
   [ -n "$sess" ] && "$RELAY_TMUX" kill-session -t "$sess" 2>/dev/null || true
   # signal the supervisor to terminate; its EXIT trap deletes the run dir.
-  # Guard: only kill a real positive pid — `kill 0` would signal the whole
+  # Guard: only kill a real positive pid - `kill 0` would signal the whole
   # process group (the placeholder pid before the launcher patches in the real one).
   if [ -n "$pid" ] && [ "$pid" != "null" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
     kill "$pid" 2>/dev/null || true

@@ -18,7 +18,7 @@ relay_cap_hit() {
   gen="$(relay_state_get "$rd" '.generation')"; next=$(( gen + 1 ))
   if [ "$maxgen" != "null" ] && [ "$next" -gt "$maxgen" ]; then echo gen; return; fi
   if [ "$maxrt" != "null" ] && [ "$runtime" -ge "$maxrt" ]; then echo runtime; return; fi
-  # cost comes from statusline JSON (Claude's process) — pass it to awk as DATA via
+  # cost comes from statusline JSON (Claude's process) - pass it to awk as DATA via
   # -v, never string-interpolated into the program, or a crafted value would be
   # executed as awk code. awk coerces a non-numeric value to 0, which is safe here.
   if [ "$maxcost" != "null" ] && awk -v c="$cost" -v m="$maxcost" 'BEGIN{exit !(c+0 >= m+0)}'; then echo cost; return; fi

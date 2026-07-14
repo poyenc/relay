@@ -4,7 +4,7 @@ relay_root() { printf '%s/relay-%s' "${TMPDIR:-/tmp}" "$(id -u)"; }
 
 # True iff <pid> is actually THIS run's supervisor, not just any live process with
 # that PID. `kill -0` alone is unsafe: after the supervisor dies its PID can be
-# recycled by an unrelated process, which would then be reported live and — worse —
+# recycled by an unrelated process, which would then be reported live and - worse -
 # be the target of `relay --stop`. Match the recorded run dir in the process's
 # cmdline (the supervisor is always `... relay-supervisor.sh --run-dir <rd>`).
 relay_pid_is_supervisor() {  # <pid> <run_dir>

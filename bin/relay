@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# relay — run Claude Code as a long-lived, self-rotating session.
+# relay - run Claude Code as a long-lived, self-rotating session.
 # Usage: relay [relay flags] -- [claude args]   (see --help / design spec)
 set -uo pipefail
 
@@ -43,8 +43,8 @@ relay_cmd_launch() {
      "$rd/state.json" > "$rd/state.json.tmp" && mv "$rd/state.json.tmp" "$rd/state.json"
 
   # start the supervisor daemon (owns rotation + lifecycle + run-dir teardown)
-  # Detach the daemon's stdio to its log — it must not write to the user's
-  # terminal, and leaving fd1 open to a parent `$(relay …)` would deadlock it.
+  # Detach the daemon's stdio to its log - it must not write to the user's
+  # terminal, and leaving fd1 open to a parent `$(relay ...)` would deadlock it.
   RELAY_MARKER_TIMEOUT="$RELAY_OPT_MARKER_TIMEOUT" RELAY_TMUX="$RELAY_TMUX" \
     "$RELAY_SUPERVISOR_BIN" --run-dir "$rd" >>"$rd/supervisor.log" 2>&1 &
   local sup=$!
@@ -69,7 +69,7 @@ relay_cmd_launch() {
 relay_attach_session() {  # <session>
   local sess="$1"
   if [ -n "${TMUX:-}" ]; then
-    echo "relay: (nested tmux detected — switching client to $sess)" >&2
+    echo "relay: (nested tmux detected - switching client to $sess)" >&2
     "$RELAY_TMUX" switch-client -t "$sess"
   else
     "$RELAY_TMUX" attach-session -t "$sess"

@@ -34,7 +34,7 @@ handle_stop_request() {
 
   # Re-arm: if a rotation is already pending but the handoff marker hasn't appeared,
   # a fresh idle Stop means the earlier block was missed (hook timed out). Re-deliver
-  # the instruction now instead of returning {} and waiting out marker_timeout —
+  # the instruction now instead of returning {} and waiting out marker_timeout -
   # closes the dead-air window. Loop-safety: never re-block when stop_hook_active.
   if [ "$(relay_state_get "$RUN_DIR" '.rotation_pending')" = "true" ]; then
     marker="$(relay_state_get "$RUN_DIR" '.pending_marker')"
@@ -151,7 +151,7 @@ handle_pending_rotation() {
 }
 
 # Lifecycle monitor: once the hosted session has been seen alive, its disappearance
-# means the user exited (or it crashed) — stop the run. rotation_pending deaths are
+# means the user exited (or it crashed) - stop the run. rotation_pending deaths are
 # not possible here since respawn-pane keeps the session alive across a rotation.
 monitor_lifecycle() {
   local sess seen
