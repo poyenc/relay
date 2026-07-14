@@ -56,6 +56,14 @@ relay_cmd_launch() {
     -e "RELAY_RUN_DIR=$rd" \
     -e "RELAY_STATE=$rd/statusline.json" \
     "$cmd"
+  # Scrub the RELAY_* vars from the session scope now that the initial pane has
+  # them baked into its process env. new-session -e sets them session-wide, so
+  # any window opened later would otherwise inherit them - clobbering this run's
+  # statusline.json and firing its Stop hook against this run dir. Relay must
+  # supervise only the pane it created. Rotation re-injects per-pane via
+  # respawn-pane -e, so this does not starve the next generation.
+  "$RELAY_TMUX" set-environment -u -t "$sess" RELAY_RUN_DIR 2>/dev/null || true
+  "$RELAY_TMUX" set-environment -u -t "$sess" RELAY_STATE 2>/dev/null || true
 
   echo "relay: run $run_id started (pid $sup)."
   echo "relay: attach with:  relay --attach $run_id"

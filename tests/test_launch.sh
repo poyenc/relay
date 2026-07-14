@@ -52,6 +52,9 @@ kill -0 "$sup_pid" 2>/dev/null && assert_ok "supervisor process alive" || assert
 assert_contains "$(cat "$tmuxlog")" "new-session" "tmux session created"
 assert_contains "$(cat "$tmuxlog")" "RELAY_RUN_DIR=$rd" "run dir exported into session"
 assert_contains "$(cat "$tmuxlog")" "-s $sess" "session named"
+# RELAY_* scrubbed from session scope so later windows don't inherit + clobber
+assert_contains "$(cat "$tmuxlog")" "set-environment -u -t $sess RELAY_RUN_DIR" "run dir unset from session scope"
+assert_contains "$(cat "$tmuxlog")" "set-environment -u -t $sess RELAY_STATE" "statusline path unset from session scope"
 # startup banner prints run_id + attach hint
 assert_contains "$out" "$(basename "$rd")" "run_id printed"
 assert_contains "$out" "--attach" "attach hint printed"
