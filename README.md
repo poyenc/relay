@@ -108,6 +108,7 @@ When a run starts it prints the `run_id` and the attach/stop commands.
 | `--max-cost <usd>` | none | Cap: stop after cumulative cost (API-cost mode only). |
 | `--no-auto-continue` | off | Load handoff and wait, instead of auto-continuing. |
 | `--marker-timeout <s>` | `120` | How long to wait for the handoff before giving up on a rotation. |
+| `--switch` | off | When nested in tmux (e.g. byobu), switch the client to the new session on launch. Default: stay put and print the attach command. |
 
 ### Subcommands
 

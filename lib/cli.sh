@@ -36,6 +36,9 @@ Launch flags:
   --max-cost <usd>       Cap: stop after cumulative cost (API-cost mode only).
   --no-auto-continue     Load handoff and wait (default auto-continues).
   --marker-timeout <s>   Handoff wait before ROTATE_FAILED (default 120).
+  --switch               When nested in tmux (e.g. byobu), switch the client to
+                         the new session on launch. Default: stay put and print
+                         the attach command (keeps your current window view).
 
 Subcommands (each takes an explicit <run_id>, prefix-matchable):
   --list                 Table of live runs (the only discovery command).
@@ -66,6 +69,7 @@ relay_parse_args() {
   RELAY_OPT_MAX_COST=""
   RELAY_OPT_MARKER_TIMEOUT="120"
   RELAY_OPT_AUTO_CONTINUE="1"
+  RELAY_OPT_SWITCH="0"
   RELAY_CLAUDE_ARGS=()
   RELAY_PARSE_ERR=""
   local saw_launch_flag=0 saw_subcommand=0 dur
@@ -92,6 +96,8 @@ relay_parse_args() {
         RELAY_OPT_MARKER_TIMEOUT="$2"; saw_launch_flag=1; shift 2 ;;
       --no-auto-continue)
         RELAY_OPT_AUTO_CONTINUE="0"; saw_launch_flag=1; shift ;;
+      --switch)
+        RELAY_OPT_SWITCH="1"; saw_launch_flag=1; shift ;;
       --list)
         RELAY_MODE="list"; saw_subcommand=1; shift ;;
       --attach|--stop|--status)

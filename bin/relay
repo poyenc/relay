@@ -65,12 +65,20 @@ relay_cmd_launch() {
   relay_attach_session "$sess"
 }
 
-# Attach the user's terminal to a session; honor nested-tmux (switch-client).
+# Attach the user's terminal to a session after launch.
+# When nested in tmux (e.g. byobu), switching clients would yank the user off
+# their current session's window view. So only switch if --switch was passed;
+# otherwise stay put and let the printed attach command drive it. Outside tmux
+# there is nothing to lose, so always attach.
 relay_attach_session() {  # <session>
   local sess="$1"
   if [ -n "${TMUX:-}" ]; then
-    echo "relay: (nested tmux detected - switching client to $sess)" >&2
-    "$RELAY_TMUX" switch-client -t "$sess"
+    if [ "${RELAY_OPT_SWITCH:-0}" = "1" ]; then
+      echo "relay: (nested tmux detected - switching client to $sess)" >&2
+      "$RELAY_TMUX" switch-client -t "$sess"
+    else
+      echo "relay: (nested tmux detected - not switching; use the attach command above)" >&2
+    fi
   else
     "$RELAY_TMUX" attach-session -t "$sess"
   fi
