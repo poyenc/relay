@@ -24,13 +24,13 @@ relay_pid_is_supervisor() {  # <pid> <run_dir>
 relay_create_rundir() {
   local root; root="$(relay_root)"
   mkdir -m 700 -p "$root"
-  mktemp -d "$root/run-$(date +%Y%m%d)-XXXXXX"
+  mktemp -d "$root/$(date +%y%m%d-%H%M%S)-XXXXXX"
 }
 
 relay_list_live() {
   local root; root="$(relay_root)"; local d pid gen
   [ -d "$root" ] || return 0
-  for d in "$root"/run-*; do
+  for d in "$root"/*; do
     [ -f "$d/state.json" ] || continue
     pid="$(jq -r '.supervisor_pid // empty' "$d/state.json" 2>/dev/null)"
     [ -n "$pid" ] || continue
@@ -44,7 +44,7 @@ relay_list_live() {
 relay_prune_dead() {
   local root; root="$(relay_root)"; local d pid
   [ -d "$root" ] || return 0
-  for d in "$root"/run-*; do
+  for d in "$root"/*; do
     [ -d "$d" ] || continue
     if [ -f "$d/state.json" ]; then
       pid="$(jq -r '.supervisor_pid // empty' "$d/state.json" 2>/dev/null)"

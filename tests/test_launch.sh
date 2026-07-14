@@ -32,13 +32,13 @@ out="$(
 )"
 
 # a run dir was created under the isolated root
-rd="$(ls -d "$(relay_root)"/run-* 2>/dev/null | head -1)"
+rd="$(ls -d "$(relay_root)"/* 2>/dev/null | head -1)"
 assert_file_exists "$rd/state.json" "state.json created by launch"
 assert_eq "$(relay_state_get "$rd" '.policy.rotate_at_pct')" "45" "rotate-at stored"
 assert_eq "$(relay_state_get "$rd" '.policy.max_gen')" "3" "max-gen stored"
 assert_eq "$(relay_state_get "$rd" '.auto_continue')" "false" "auto-continue off stored"
 sess="$(relay_state_get "$rd" '.tmux_session')"
-assert_contains "$sess" "relay-run-" "session name derived from run_id"
+assert_contains "$sess" "relay-" "session name derived from run_id"
 assert_contains "$(relay_state_get "$rd" '.launch_cmd')" "/usr/bin/claude" "launch cmd recorded"
 # launch_cmd must eval back to the exact argv (claude ... -p 'do work')
 eval "set -- $(relay_state_get "$rd" '.launch_cmd')"

@@ -128,7 +128,7 @@ going in the background; re-attach with `relay --attach`.
 
 ## Run state
 
-Each run lives under `${TMPDIR:-/tmp}/relay-$(id -u)/run-YYYYMMDD-XXXXXX/`
+Each run lives under `${TMPDIR:-/tmp}/relay-$(id -u)/YYMMDD-HHMMSS-XXXXXX/`
 (per-user, mode `700`). It holds `state.json`, the supervisor log, and per-
 generation handoffs. Run dirs are **ephemeral**: deleted when the run stops, and
 dead run dirs are pruned on the next launch. Inspect handoffs *during* a run,
