@@ -79,6 +79,7 @@ relay_attach_session() {  # <session>
 relay_main() {
   relay_parse_args "$@" || relay_die "$RELAY_PARSE_ERR"
   case "$RELAY_MODE" in
+    help)               relay_usage ;;
     launch)             relay_cmd_launch ;;
     list)               relay_cmd_list ;;
     attach)             relay_cmd_attach "$RELAY_ARG_ID" ;;

@@ -20,6 +20,37 @@ relay_parse_duration() {
   printf '%s\n' "$(( num * unit ))"
 }
 
+# Emit the usage/help text. Lists every relay flag and subcommand.
+relay_usage() {
+  cat <<'EOF'
+Usage: relay [relay flags] -- [claude args passed verbatim]
+
+Run Claude Code as a long-lived, self-rotating session. relay hosts claude in
+tmux, auto-attaches you, and rotates to a fresh session (with an injected
+handoff) when context crosses the threshold.
+
+Launch flags:
+  --rotate-at <pct>      Rotate when context >= this % (default 60).
+  --max-gen <n>          Cap: stop after N generations.
+  --max-runtime <dur>    Cap: stop after wall-clock (e.g. 30s, 90m, 8h, 2d).
+  --max-cost <usd>       Cap: stop after cumulative cost (API-cost mode only).
+  --no-auto-continue     Load handoff and wait (default auto-continues).
+  --marker-timeout <s>   Handoff wait before ROTATE_FAILED (default 120).
+
+Subcommands (each takes an explicit <run_id>, prefix-matchable):
+  --list                 Table of live runs (the only discovery command).
+  --attach <run_id>      Attach to a run.
+  --stop <run_id>        Stop a run (deletes its run dir on teardown).
+  --status <run_id>      Print a run's state.json.
+  --install-statusline <file>
+                         Install the statusline tee into your statusline file.
+
+  -h, --help             Show this help and exit.
+
+Bare `relay` = --rotate-at 60, no caps, auto-continue on.
+EOF
+}
+
 # Parse relay's own argv. Populates:
 #   RELAY_MODE : launch | list | attach | stop | status | install-statusline
 #   RELAY_ARG_ID : run_id (attach/stop/status) or file path (install-statusline)
@@ -41,6 +72,7 @@ relay_parse_args() {
 
   while [ $# -gt 0 ]; do
     case "$1" in
+      -h|--help) RELAY_MODE="help"; return 0 ;;
       --) shift; RELAY_CLAUDE_ARGS=("$@"); break ;;
       --rotate-at)
         [ $# -ge 2 ] || { RELAY_PARSE_ERR="--rotate-at requires a value"; return 1; }

@@ -1,2 +1,0 @@
-{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "command",
-  "command": "printf 'RELAY_INJECT_MARKER_9F3: the secret word is kumquat\\n'" } ] } ] } }

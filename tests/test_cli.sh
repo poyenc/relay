@@ -74,4 +74,30 @@ relay_parse_args --install-statusline /home/me/.claude/statusline.sh
 assert_eq "$RELAY_MODE" "install-statusline" "install-statusline mode"
 assert_eq "$RELAY_ARG_ID" "/home/me/.claude/statusline.sh" "statusline file path captured"
 
+# --- help flag ---
+relay_parse_args --help
+assert_eq "$?" "0" "--help parse ok"
+assert_eq "$RELAY_MODE" "help" "--help mode"
+relay_parse_args -h
+assert_eq "$RELAY_MODE" "help" "-h mode"
+# help wins over other flags without tripping the mixing error
+relay_parse_args --rotate-at 45 --help
+assert_eq "$?" "0" "--help after a flag parse ok"
+assert_eq "$RELAY_MODE" "help" "--help wins over launch flags"
+
+# --- usage text mentions every flag/subcommand ---
+u="$(relay_usage)"
+assert_contains "$u" "Usage" "usage has header"
+assert_contains "$u" "--rotate-at" "usage: rotate-at"
+assert_contains "$u" "--max-gen" "usage: max-gen"
+assert_contains "$u" "--max-runtime" "usage: max-runtime"
+assert_contains "$u" "--max-cost" "usage: max-cost"
+assert_contains "$u" "--no-auto-continue" "usage: no-auto-continue"
+assert_contains "$u" "--marker-timeout" "usage: marker-timeout"
+assert_contains "$u" "--list" "usage: list"
+assert_contains "$u" "--attach" "usage: attach"
+assert_contains "$u" "--stop" "usage: stop"
+assert_contains "$u" "--status" "usage: status"
+assert_contains "$u" "--install-statusline" "usage: install-statusline"
+
 finish
