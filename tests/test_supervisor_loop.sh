@@ -34,6 +34,17 @@ bash bin/relay-supervisor.sh --run-dir "$rd2" --once
 assert_eq "$(cat "$rd2/stop-response.json")" "{}" "below threshold -> continue"
 assert_eq "$(relay_state_get "$rd2" '.rotation_pending')" "false" "no pending"
 
+# --- final generation: rotate decision that breaches a cap -> STOP, no handoff ---
+rd4="$(mktemp -d)"; mkdir -p "$rd4/gen-1"; relay_state_init "$rd4" 60 1 "" "" $$  # max_gen=1
+printf '{"context_window":{"used_percentage":80}}' > "$rd4/statusline.json"
+printf '{"hook_event_name":"Stop","transcript_path":"/none","stop_hook_active":false}' > "$rd4/stop-request.json"
+bash bin/relay-supervisor.sh --run-dir "$rd4" --once
+assert_eq "$(cat "$rd4/stop-response.json")" "{}" "final gen -> no handoff block"
+assert_eq "$(relay_state_get "$rd4" '.rotation_pending')" "false" "no pending set on final gen"
+assert_file_absent "$rd4/gen-1/handoff.ready" "no handoff marker requested"
+assert_eq "$(relay_state_get "$rd4" '.status')" "stopped" "run stopped at cap"
+assert_contains "$(cat "$rd4/supervisor.log")" "STOPPED reason=cap:gen" "cap STOP logged"
+
 # --- marker timeout -> ROTATE_FAILED ---
 rd3="$(mktemp -d)"; mkdir -p "$rd3/gen-1"; relay_state_init "$rd3" 60 "" "" "" $$
 relay_state_set "$rd3" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0'

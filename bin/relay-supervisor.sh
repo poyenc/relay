@@ -22,7 +22,7 @@ log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$RUN_DIR/supe
 
 handle_stop_request() {
   [ -f "$RUN_DIR/stop-request.json" ] || return 0
-  local payload tp sha pct decision gen marker
+  local payload tp sha pct decision gen marker cap
   payload="$(cat "$RUN_DIR/stop-request.json")"
   if ! printf '%s' "$payload" | jq empty 2>/dev/null; then
     log "STOP_REQUEST_INVALID reason=malformed_json"
@@ -55,6 +55,16 @@ handle_stop_request() {
   pct="$(relay_context_pct "$RUN_DIR" "$tp")"
   decision="$(relay_should_rotate "$RUN_DIR" "$pct" "$sha")"
   if [ "$decision" = "rotate" ]; then
+    # Final generation: if rotating would breach a cap there is no next generation
+    # to consume a handoff, so skip the handoff request entirely and stop the run.
+    cap="$(relay_cap_hit "$RUN_DIR" "$(_run_elapsed_s)" "$(relay_cost_from_statusline "$RUN_DIR")")"
+    if [ "$cap" != "none" ]; then
+      printf '{}' > "$RUN_DIR/stop-response.json.tmp"
+      mv "$RUN_DIR/stop-response.json.tmp" "$RUN_DIR/stop-response.json"
+      rm -f "$RUN_DIR/stop-request.json"
+      stop_run "cap:$cap"
+      return 0
+    fi
     gen="$(relay_state_get "$RUN_DIR" '.generation')"
     marker="gen-$gen/handoff.ready"
     mkdir -p "$RUN_DIR/gen-$gen"
