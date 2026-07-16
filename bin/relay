@@ -51,11 +51,15 @@ relay_cmd_launch() {
   jq --argjson pid "$sup" '.supervisor_pid=$pid' "$rd/state.json" \
      > "$rd/state.json.tmp" && mv "$rd/state.json.tmp" "$rd/state.json"
 
-  # create the tmux session hosting claude, with RELAY_* env
-  "$RELAY_TMUX" new-session -d -s "$sess" \
+  # create the tmux session hosting claude, with RELAY_* env. Capture the id of
+  # the pane we launch into so rotation/nudge target THIS pane, not whatever pane
+  # happens to be active in the session (a bare session target resolves to the
+  # active pane, so a user split/window would otherwise misdirect the respawn).
+  local pane
+  pane="$("$RELAY_TMUX" new-session -d -s "$sess" -P -F '#{pane_id}' \
     -e "RELAY_RUN_DIR=$rd" \
     -e "RELAY_STATE=$rd/statusline.json" \
-    "$cmd"
+    "$cmd")"
   # Scrub the RELAY_* vars from the session scope now that the initial pane has
   # them baked into its process env. new-session -e sets them session-wide, so
   # any window opened later would otherwise inherit them - clobbering this run's
@@ -64,6 +68,8 @@ relay_cmd_launch() {
   # respawn-pane -e, so this does not starve the next generation.
   "$RELAY_TMUX" set-environment -u -t "$sess" RELAY_RUN_DIR 2>/dev/null || true
   "$RELAY_TMUX" set-environment -u -t "$sess" RELAY_STATE 2>/dev/null || true
+  jq --arg pane "$pane" '.tmux_pane=$pane' "$rd/state.json" \
+     > "$rd/state.json.tmp" && mv "$rd/state.json.tmp" "$rd/state.json"
 
   echo "relay: run $run_id started (pid $sup)."
   echo "relay: attach with:  relay --attach $run_id"

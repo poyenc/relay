@@ -15,6 +15,7 @@ seed_live() {  # <rd> <auto_continue>
 rd="$(mktemp -d)"; mkdir -p "$rd/gen-1"
 relay_state_init "$rd" 60 "" "" "" $$
 seed_live "$rd" true
+relay_state_set "$rd" '.tmux_pane="%7"'   # rotation must target this pane, not the session
 relay_state_set "$rd" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70'
 : > "$rd/gen-1/handoff.ready"
 log="$rd/tmux.log"; : > "$log"
@@ -22,11 +23,11 @@ FAKE_TMUX_LOG="$log" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
   bash bin/relay-supervisor.sh --run-dir "$rd" --once
 assert_eq "$(relay_state_get "$rd" '.generation')" "2" "gen bumped after actuated rotation"
 assert_eq "$(relay_state_get "$rd" '.rotation_pending')" "false" "pending cleared"
-assert_contains "$(cat "$log")" "respawn-pane -k -t relay-test" "respawn-pane called on session"
+assert_contains "$(cat "$log")" "respawn-pane -k -t %7" "respawn-pane targets the launched pane"
 assert_contains "$(cat "$log")" "RELAY_HANDOFF_PATH=$rd/gen-1/handoff.md" "next-gen handoff env passed"
 assert_contains "$(cat "$log")" "RELAY_RUN_DIR=$rd" "run dir env re-exported"
 assert_contains "$(cat "$log")" "claude --plugin-dir /x" "launch cmd reused on respawn"
-assert_contains "$(cat "$log")" "send-keys -t relay-test" "auto-continue nudge sent"
+assert_contains "$(cat "$log")" "send-keys -t %7" "auto-continue nudge sent to the launched pane"
 
 # ---------- 2. --no-auto-continue -> no nudge ----------
 rd2="$(mktemp -d)"; mkdir -p "$rd2/gen-1"
@@ -37,7 +38,8 @@ relay_state_set "$rd2" '.rotation_pending=true | .pending_marker="gen-1/handoff.
 log2="$rd2/tmux.log"; : > "$log2"
 FAKE_TMUX_LOG="$log2" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
   bash bin/relay-supervisor.sh --run-dir "$rd2" --once
-assert_contains "$(cat "$log2")" "respawn-pane" "respawn still happens without auto-continue"
+# no .tmux_pane seeded -> falls back to the session target (legacy runs)
+assert_contains "$(cat "$log2")" "respawn-pane -k -t relay-test" "respawn falls back to session when no pane stored"
 assert_eq "$(grep -c 'send-keys' "$log2")" "0" "no nudge when auto-continue off"
 
 # ---------- 3. cap hit at rotation edge -> STOPPED, session killed, no bump ----------

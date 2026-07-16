@@ -106,24 +106,29 @@ stop_run() {  # <reason>
 # is never used (shared per-user server). No-op when no tmux session is configured
 # (Plan-1 state-transition mode).
 actuate_rotation() {  # <from_gen> <handoff_md>
-  local from_gen="$1" handoff="$2" sess cmd auto
+  local from_gen="$1" handoff="$2" sess pane target cmd auto
   sess="$(relay_state_get "$RUN_DIR" '.tmux_session // ""')"
   [ -n "$sess" ] || return 0
+  # Target the exact pane relay launched into, not the session's active pane -
+  # otherwise a user-created split/window steals the respawn. Fall back to the
+  # session for runs predating pane capture.
+  pane="$(relay_state_get "$RUN_DIR" '.tmux_pane // ""')"
+  target="${pane:-$sess}"
   cmd="$(relay_state_get "$RUN_DIR" '.launch_cmd // ""')"
   # NOTE: jq's `//` treats false as empty, so a plain `.auto_continue // true`
   # would turn an explicit false into true. Null-check explicitly.
   auto="$(relay_state_get "$RUN_DIR" 'if .auto_continue == null then true else .auto_continue end')"
-  "$RELAY_TMUX" respawn-pane -k -t "$sess" \
+  "$RELAY_TMUX" respawn-pane -k -t "$target" \
     -e "RELAY_RUN_DIR=$RUN_DIR" \
     -e "RELAY_STATE=$RUN_DIR/statusline.json" \
     -e "RELAY_HANDOFF_PATH=$handoff" \
-    "$cmd" 2>/dev/null || log "ACTUATE_WARN respawn_failed sess=$sess"
+    "$cmd" 2>/dev/null || log "ACTUATE_WARN respawn_failed target=$target"
   if [ "$auto" = "true" ]; then
     # Give the fresh claude a moment to boot before typing into it. Synchronous
     # (not backgrounded) so it is deterministic; a brief pause at a rare rotation
     # edge is harmless. RELAY_NUDGE_DELAY=0 in tests.
     [ "$RELAY_NUDGE_DELAY" = "0" ] || sleep "$RELAY_NUDGE_DELAY"
-    "$RELAY_TMUX" send-keys -t "$sess" "Continue from the handoff above." Enter 2>/dev/null || true
+    "$RELAY_TMUX" send-keys -t "$target" "Continue from the handoff above." Enter 2>/dev/null || true
   fi
 }
 

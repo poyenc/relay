@@ -25,7 +25,7 @@ printf '#!/usr/bin/env bash\nsleep 30\n' > "$stub_sup"; chmod +x "$stub_sup"
 tmuxlog="$TMPDIR/tmux.log"; : > "$tmuxlog"
 
 out="$(
-  RELAY_TMUX="$FAKE" FAKE_TMUX_LOG="$tmuxlog" \
+  RELAY_TMUX="$FAKE" FAKE_TMUX_LOG="$tmuxlog" FAKE_TMUX_PANE="%7" \
   RELAY_CLAUDE_BIN=/usr/bin/claude RELAY_SUPERVISOR_BIN="$stub_sup" \
   RELAY_NO_ATTACH=1 \
   bash bin/relay --rotate-at 45 --max-gen 3 --no-auto-continue -- -p "do work"
@@ -55,6 +55,9 @@ assert_contains "$(cat "$tmuxlog")" "-s $sess" "session named"
 # RELAY_* scrubbed from session scope so later windows don't inherit + clobber
 assert_contains "$(cat "$tmuxlog")" "set-environment -u -t $sess RELAY_RUN_DIR" "run dir unset from session scope"
 assert_contains "$(cat "$tmuxlog")" "set-environment -u -t $sess RELAY_STATE" "statusline path unset from session scope"
+# launched pane id captured + stored so rotation targets THIS pane, not the active one
+assert_contains "$(cat "$tmuxlog")" "-P -F #{pane_id}" "pane id requested at launch"
+assert_eq "$(relay_state_get "$rd" '.tmux_pane')" "%7" "launched pane id stored"
 # startup banner prints run_id + attach hint
 assert_contains "$out" "$(basename "$rd")" "run_id printed"
 assert_contains "$out" "--attach" "attach hint printed"
