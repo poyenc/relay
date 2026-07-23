@@ -268,7 +268,38 @@ Expected: actuation PASS, cli PASS, `ALL GREEN`. (Sections 3-6 of test_actuation
 
 Note: Steps 9-10 leave `test_actuation.sh` sections 3-6 (stop/liveness) still on the old `kill-session`/`session_gone` behavior, which is unchanged so far — they still pass. Only sections 1-2 (rotation) changed here. Confirm `ALL GREEN`.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 11: Add the /exit-timeout (force-kill) coverage (failing first)**
+
+Every other test sets `FAKE_PANE_DEAD=1` so `/exit` looks instant and only the
+clean path runs. This step exercises the branch where `/exit` HANGS: the poll
+must time out (`TEARDOWN_EXIT_TIMEOUT`) and the caller must still respawn (the
+`-k` force-kill fallback). Append a new section to `tests/test_actuation.sh`
+after section 2 (before section 3):
+```bash
+# ---------- 2b. /exit hangs -> poll times out, force-kill via respawn still fires ----------
+rdt="$(mktemp -d)"; mkdir -p "$rdt/gen-1"
+relay_state_init "$rdt" 60 "" "" "" $$
+seed_live "$rdt" true
+relay_state_set "$rdt" '.tmux_pane="%7" | .rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
+: > "$rdt/gen-1/handoff.ready"
+logt="$rdt/tmux.log"; : > "$logt"
+# FAKE_PANE_DEAD=0 -> pane never reports dead -> poll exhausts RELAY_EXIT_TIMEOUT
+FAKE_TMUX_LOG="$logt" FAKE_PANE_DEAD=0 RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 RELAY_ROTATE_GRACE=0 RELAY_EXIT_TIMEOUT=1 \
+  bash bin/relay-supervisor.sh --run-dir "$rdt" --once
+assert_contains "$(cat "$rdt/supervisor.log")" "TEARDOWN_EXIT_TIMEOUT" "hung /exit logs timeout"
+assert_contains "$(cat "$logt")" "respawn-pane -k -t %7" "force-kill respawn still fires after timeout"
+assert_eq "$(relay_state_get "$rdt" '.generation')" "2" "rotation completes despite hung /exit"
+```
+
+- [ ] **Step 12: Run actuation to verify the new section fails, then passes**
+
+Run: `bash tests/test_actuation.sh`
+Expected: with the Step 9 code already in place, this section PASSES (the poll loop
++ `TEARDOWN_EXIT_TIMEOUT` log + respawn fallback already exist). If it FAILS,
+the poll/timeout logic is wrong — fix `graceful_teardown` before committing. Then
+`bash tests/run-all.sh` → `ALL GREEN`.
+
+- [ ] **Step 13: Commit**
 
 ```bash
 git add bin/relay-supervisor.sh bin/relay lib/cli.sh tests/test_actuation.sh tests/test_cli.sh
@@ -440,7 +471,8 @@ git commit -m "feat: pane-scoped stop (kill-pane) and pane-existence liveness; p
 **Files:**
 - Modify: `bin/relay-supervisor.sh` — `iterate` (lines 218-223): add a stop-marker check
 - Modify: `lib/subcommands.sh` — `relay_cmd_stop` (lines 99-112)
-- Modify: `tests/test_subcommands.sh` — stop test (lines 58-64)
+- Modify: `tests/test_subcommands.sh` — stop test (lines 58-64): CLI fallback path
+- Modify: `tests/test_actuation.sh` — add section 8: supervisor consumes the marker (happy path)
 
 **Interfaces:**
 - Consumes: `stop_run` (Task 3); state `.tmux_pane`, `.supervisor_pid`, `.status`.
@@ -523,20 +555,44 @@ relay_cmd_stop() {  # <id-or-prefix>
 }
 ```
 
-- [ ] **Step 5: Run subcommands + full suite**
+- [ ] **Step 5: Add the supervisor-side happy-path test (marker consumed → graceful stop)**
 
-Run: `bash tests/test_subcommands.sh && bash tests/run-all.sh`
+Step 1's subcommands test only covers the CLI fallback (no live supervisor). This
+step covers the PRIMARY flow — the supervisor picks up `stop-run.json` and runs the
+one graceful stop path — at the supervisor level via `--once`. Append to
+`tests/test_actuation.sh` after section 7:
+```bash
+# ---------- 8. stop-run marker -> supervisor runs graceful stop (kill-pane) ----------
+rds="$(mktemp -d)"; mkdir -p "$rds/gen-1"
+relay_state_init "$rds" 60 "" "" "" $$
+seed_live "$rds" true
+printf '{"reason":"user_stop"}' > "$rds/stop-run.json"
+logs="$rds/tmux.log"; : > "$logs"
+FAKE_TMUX_LOG="$logs" RELAY_TMUX="$FAKE" RELAY_ROTATE_GRACE=0 \
+  bash bin/relay-supervisor.sh --run-dir "$rds" --once
+assert_eq "$(relay_state_get "$rds" '.status')" "stopped" "marker -> run stopped"
+assert_contains "$(cat "$rds/supervisor.log")" "STOPPED reason=user_stop" "user_stop logged"
+assert_contains "$(cat "$logs")" "send-keys -t %7 /exit Enter" "graceful /exit on stop"
+assert_contains "$(cat "$logs")" "kill-pane -t %7" "stop reaps relay's pane"
+assert_eq "$(grep -c 'kill-session' "$logs")" "0" "stop never kill-session"
+assert_file_absent "$rds/stop-run.json" "marker consumed"
+assert_file_exists "$rds/state.json" "run dir persists after stop (not deleted)"
+```
+
+- [ ] **Step 6: Run actuation + subcommands + full suite**
+
+Run: `bash tests/test_actuation.sh && bash tests/test_subcommands.sh && bash tests/run-all.sh`
 Expected: PASS; `ALL GREEN`.
 
-- [ ] **Step 6: Verify no kill-session anywhere in bin/lib**
+- [ ] **Step 7: Verify no kill-session anywhere in bin/lib**
 
 Run: `grep -rn "kill-session\|kill-server" bin/ lib/`
 Expected: no output.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add bin/relay-supervisor.sh lib/subcommands.sh tests/test_subcommands.sh
+git add bin/relay-supervisor.sh lib/subcommands.sh tests/test_subcommands.sh tests/test_actuation.sh
 git commit -m "feat: relay --stop routes through supervisor via stop-run marker (no kill-session)"
 ```
 
@@ -727,6 +783,67 @@ git commit -m "docs: document pane-scoped graceful teardown; add manual verifica
 
 ---
 
+### Task 7: REQUIRED real-session verification gate (pre-merge)
+
+The unit tests run against a fake tmux — they prove command emission and state
+transitions, NOT real behavior. Four things only a real run can prove:
+`remain-on-exit` actually lingers a pane; killing the last pane collapses the
+session; a real claude `/exit` is honored within `--exit-timeout`; and — the
+whole point of this change — **multi-pane safety** (a user split in relay's
+window survives rotation and stop). This gate is NOT optional; do not merge on
+unit-green alone. It spends real tokens (a couple of trivial prompts).
+
+**Files:** none (verification only; may add findings as follow-up commits).
+
+- [ ] **Step 1: Launch a real detached run**
+
+```bash
+RELAY_NO_ATTACH=1 bash bin/relay --rotate-at 1 --rotate-grace 1s --exit-timeout 8s
+```
+Record the run dir (`ls -dt /tmp/relay-$(id -un)/* | head -1`) and session name.
+Confirm `state.json` has `tmux_pane` set and the pane is alive.
+
+- [ ] **Step 2: Multi-pane safety — user splits relay's window**
+
+Split relay's pane so the user has a second pane in the same window:
+```bash
+tmux split-window -t "<relay_pane>" -P -F '#{pane_id}' 'sleep 600'
+```
+Record the user pane id.
+
+- [ ] **Step 3: Drive a rotation, verify only relay's pane is touched**
+
+Send a real prompt to relay's pane (accept any permission prompts, or launch
+claude with `--permission-mode acceptEdits` via `-- --permission-mode acceptEdits`).
+Watch the supervisor log for `ROTATED` / `TEARDOWN_EXIT_CLEAN` and state
+`generation=2`. Then assert:
+- relay's pane id is unchanged (respawned in place), `pane_dead=0` (fresh claude)
+- the USER's split pane still exists and is untouched (`pane_dead=0`)
+- `gen-1/pane.log` was written
+Expected: rotation completes; user pane survives.
+
+- [ ] **Step 4: Stop the run, verify pane-scoped teardown**
+
+```bash
+bash bin/relay --stop <run_id>
+```
+Assert:
+- relay's pane is gone (reaped), `status=stopped` + `stopped_at` in state.json
+- the USER's split pane STILL exists and the session is STILL alive (because the
+  user's pane remains) — `kill-session` would have destroyed it
+- the run dir still exists on disk (NOT deleted)
+Then clean up the user's pane manually: `tmux kill-pane -t "<user_pane>"`.
+
+- [ ] **Step 5: Report findings**
+
+Write a short verification report (what passed, any real-behavior surprises the
+fake couldn't catch) to `.superpowers/sdd/task-7-verification.md`. If Step 3 or 4
+revealed a real bug, fix it (new commit) and re-verify before declaring the gate
+passed. Only when all four real-behavior properties hold is the branch
+merge-ready.
+
+---
+
 ## Notes for the implementer
 
 - **Line numbers** are from `main` @ 52900be at plan-writing time; if an earlier task shifted them, match on the quoted code.
@@ -735,3 +852,6 @@ git commit -m "docs: document pane-scoped graceful teardown; add manual verifica
 - **`date +%s` vs `_relay_now`**: use `date +%s` (epoch) for `stopped_at` so prune arithmetic is integer math; `_relay_now` is ISO-8601 and used for human-facing `started_at`. Do not mix.
 - **Green bar between tasks**: Tasks 2→3 and 4→5 have test files that span the boundary (`test_actuation.sh` stop sections, `test_subcommands.sh` prune). Each task's steps rewrite the tests it owns; the suite must be `ALL GREEN` before each commit. If a boundary test breaks mid-task, finish the owning task before committing.
 - **No kill-session**: after Task 4, `grep -rn "kill-session\|kill-server" bin/ lib/` must be empty. This is a hard gate.
+- **Timeout-branch coverage**: Task 2 section 2b is the ONLY test of the hung-`/exit` force-kill path (`FAKE_PANE_DEAD=0` + `RELAY_EXIT_TIMEOUT=1`). Do not drop it — every other test uses the instant-dead default and would never exercise the timeout fallback.
+- **--stop coverage is split on purpose**: Task 4's subcommands test covers the CLI *fallback* (no live supervisor); Task 4 section 8 in test_actuation covers the *happy path* (supervisor consumes the marker). Both are needed — one alone leaves half the flow untested.
+- **Task 7 is a required gate, not optional docs polish.** The unit suite cannot prove real-tmux behavior (remain-on-exit lingering, last-pane collapse, real `/exit` honored, multi-pane safety). Merging on unit-green alone would ship the multi-pane fix unverified — the exact thing this change exists to guarantee.
