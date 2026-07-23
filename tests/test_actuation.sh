@@ -154,4 +154,18 @@ assert_eq "$(grep -c 'kill-session' "$logs")" "0" "stop never kill-session"
 assert_file_absent "$rds/stop-run.json" "marker consumed"
 assert_file_exists "$rds/state.json" "run dir persists after stop (not deleted)"
 
+# ---------- 8b. iterate short-circuits after a stop (no double-stop in one tick) ----------
+# stop marker present AND pane missing: without the STOP_NOW short-circuit in
+# iterate, monitor_lifecycle would re-enter stop_run as pane_gone after the
+# user_stop, logging a second STOPPED line. Assert exactly one STOP.
+rdss="$(mktemp -d)"; mkdir -p "$rdss/gen-1"
+relay_state_init "$rdss" 60 "" "" "" $$
+seed_live "$rdss" true
+printf '{"reason":"user_stop"}' > "$rdss/stop-run.json"
+logss="$rdss/tmux.log"; : > "$logss"
+FAKE_TMUX_LOG="$logss" FAKE_PANE_MISSING=1 RELAY_TMUX="$FAKE" RELAY_ROTATE_GRACE=0 \
+  bash bin/relay-supervisor.sh --run-dir "$rdss" --once
+assert_contains "$(cat "$rdss/supervisor.log")" "STOPPED reason=user_stop" "user_stop logged"
+assert_eq "$(grep -c 'STOPPED reason=' "$rdss/supervisor.log")" "1" "exactly one STOP (no pane_gone double-fire)"
+
 finish

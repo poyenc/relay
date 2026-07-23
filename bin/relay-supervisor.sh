@@ -273,9 +273,16 @@ handle_stop_marker() {
 }
 
 iterate() {
+  # Short-circuit after any stage stops the run: once STOP_NOW is set the run is
+  # ending, so later stages must not fire (a post-stop monitor_lifecycle would
+  # re-enter stop_run as pane_gone, and handle_pending_rotation would rotate a
+  # run we just stopped).
   handle_stop_marker    || log "ITERATE_ERROR stage=handle_stop_marker rc=$?"
+  [ "$STOP_NOW" -eq 1 ] && return 0
   handle_stop_request   || log "ITERATE_ERROR stage=handle_stop_request rc=$?"
+  [ "$STOP_NOW" -eq 1 ] && return 0
   handle_pending_rotation || log "ITERATE_ERROR stage=handle_pending_rotation rc=$?"
+  [ "$STOP_NOW" -eq 1 ] && return 0
   monitor_lifecycle     || log "ITERATE_ERROR stage=monitor_lifecycle rc=$?"
   return 0
 }
