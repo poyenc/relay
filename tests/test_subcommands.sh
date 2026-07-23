@@ -55,11 +55,15 @@ out="$(relay_cmd_status run-2026-aa)"
 assert_contains "$out" "run-2026-aaaa" "status shows id"
 assert_contains "$out" "3" "status shows generation"
 
-# --- stop: kills session, signals supervisor ---
+# --- stop: drops the stop-run marker, signals + reaps via fallback ---
 stoplog="$TMPDIR/stop-tmux.log"; : > "$stoplog"
-FAKE_TMUX_LOG="$stoplog" relay_cmd_stop run-2026-bbbb >/dev/null 2>&1
-assert_contains "$(cat "$stoplog")" "kill-session -t relay-run-2026-bbbb" "stop kills the session"
-# supervisor (LIVE2) should have been signalled dead
+# short confirm window so the test's fallback fires fast (no live supervisor to
+# consume the marker here). RELAY_STOP_CONFIRM_S caps the poll.
+FAKE_TMUX_LOG="$stoplog" RELAY_STOP_CONFIRM_S=1 relay_cmd_stop run-2026-bbbb >/dev/null 2>&1
+assert_file_exists "$live2_rd/stop-run.json" "stop marker written"
+assert_eq "$(grep -c 'kill-session' "$stoplog")" "0" "stop never kill-session"
+assert_contains "$(cat "$stoplog")" "kill-pane" "stop fallback reaps the pane"
+# supervisor (LIVE2) should have been signalled dead by the fallback
 sleep 0.3
 if kill -0 "$LIVE2" 2>/dev/null; then assert_eq alive dead "stop should kill supervisor"; else assert_ok "supervisor terminated by stop"; fi
 

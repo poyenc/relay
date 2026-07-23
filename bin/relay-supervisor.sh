@@ -265,10 +265,18 @@ monitor_lifecycle() {
   fi
 }
 
+# relay --stop drops a stop-run marker; act on it with the one graceful stop path.
+handle_stop_marker() {
+  [ -f "$RUN_DIR/stop-run.json" ] || return 0
+  rm -f "$RUN_DIR/stop-run.json"
+  stop_run "user_stop"
+}
+
 iterate() {
-  handle_stop_request || log "ITERATE_ERROR stage=handle_stop_request rc=$?"
+  handle_stop_marker    || log "ITERATE_ERROR stage=handle_stop_marker rc=$?"
+  handle_stop_request   || log "ITERATE_ERROR stage=handle_stop_request rc=$?"
   handle_pending_rotation || log "ITERATE_ERROR stage=handle_pending_rotation rc=$?"
-  monitor_lifecycle || log "ITERATE_ERROR stage=monitor_lifecycle rc=$?"
+  monitor_lifecycle     || log "ITERATE_ERROR stage=monitor_lifecycle rc=$?"
   return 0
 }
 

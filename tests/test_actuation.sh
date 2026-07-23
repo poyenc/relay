@@ -138,4 +138,20 @@ FAKE_TMUX_LOG="$log7" FAKE_PANE_MISSING=0 FAKE_PANE_DEAD=1 RELAY_TMUX="$FAKE" \
   bash bin/relay-supervisor.sh --run-dir "$rd7" --once
 assert_eq "$(relay_state_get "$rd7" '.status // "none"')" "none" "dead-but-present pane does NOT trigger stop"
 
+# ---------- 8. stop-run marker -> supervisor runs graceful stop (kill-pane) ----------
+rds="$(mktemp -d)"; mkdir -p "$rds/gen-1"
+relay_state_init "$rds" 60 "" "" "" $$
+seed_live "$rds" true
+printf '{"reason":"user_stop"}' > "$rds/stop-run.json"
+logs="$rds/tmux.log"; : > "$logs"
+FAKE_TMUX_LOG="$logs" RELAY_TMUX="$FAKE" RELAY_ROTATE_GRACE=0 \
+  bash bin/relay-supervisor.sh --run-dir "$rds" --once
+assert_eq "$(relay_state_get "$rds" '.status')" "stopped" "marker -> run stopped"
+assert_contains "$(cat "$rds/supervisor.log")" "STOPPED reason=user_stop" "user_stop logged"
+assert_contains "$(cat "$logs")" "send-keys -t %7 /exit Enter" "graceful /exit on stop"
+assert_contains "$(cat "$logs")" "kill-pane -t %7" "stop reaps relay's pane"
+assert_eq "$(grep -c 'kill-session' "$logs")" "0" "stop never kill-session"
+assert_file_absent "$rds/stop-run.json" "marker consumed"
+assert_file_exists "$rds/state.json" "run dir persists after stop (not deleted)"
+
 finish

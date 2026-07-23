@@ -97,16 +97,29 @@ TEE
 }
 
 relay_cmd_stop() {  # <id-or-prefix>
-  local rd sess pid; rd="$(relay_resolve_run_id "$1")" || return 1
+  local rd sess pane target pid i confirm
+  rd="$(relay_resolve_run_id "$1")" || return 1
   sess="$(relay_state_get "$rd" '.tmux_session')"
+  pane="$(relay_state_get "$rd" '.tmux_pane // ""')"
+  target="${pane:-$sess}"
   pid="$(relay_state_get "$rd" '.supervisor_pid')"
-  # kill the hosted session (session-scoped only; kill-server is banned)
-  [ -n "$sess" ] && "$RELAY_TMUX" kill-session -t "$sess" 2>/dev/null || true
-  # signal the supervisor to terminate; its EXIT trap deletes the run dir.
-  # Guard: only kill a real positive pid - `kill 0` would signal the whole
-  # process group (the placeholder pid before the launcher patches in the real one).
-  if [ -n "$pid" ] && [ "$pid" != "null" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
+  # Ask the supervisor to stop gracefully (it runs /exit teardown + kill-pane).
+  # Marker mirrors the Stop-hook IPC; atomic tmp+mv.
+  printf '{"reason":"user_stop"}' > "$rd/stop-run.json.tmp" 2>/dev/null \
+    && mv "$rd/stop-run.json.tmp" "$rd/stop-run.json" 2>/dev/null || true
+  # Poll for confirmation (status=stopped). Bounded so --stop never hangs.
+  confirm=0
+  for i in $(seq 1 "${RELAY_STOP_CONFIRM_S:-10}"); do
+    [ "$(relay_state_get "$rd" '.status // ""')" = "stopped" ] && { confirm=1; break; }
+    sleep 1
+  done
+  if [ "$confirm" != "1" ]; then
+    # Supervisor didn't confirm (wedged/dead). Reap the pane ourselves and signal
+    # the pid. Never kill-session - only relay's pane.
+    [ -n "$target" ] && "$RELAY_TMUX" kill-pane -t "$target" 2>/dev/null || true
+    if [ -n "$pid" ] && [ "$pid" != "null" ] && [ "$pid" -gt 0 ] 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+    fi
   fi
   echo "relay: stopped $(basename "$rd")."
 }
