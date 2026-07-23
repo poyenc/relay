@@ -83,6 +83,7 @@ FAKE_TMUX_LOG="$log3" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 RELAY_ROTATE_GRACE=
   bash bin/relay-supervisor.sh --run-dir "$rd3" --once
 assert_eq "$(relay_state_get "$rd3" '.generation')" "1" "gen NOT bumped when cap hit"
 assert_eq "$(relay_state_get "$rd3" '.status')" "stopped" "run marked stopped on cap"
+assert_eq "$(relay_state_get "$rd3" '.stopped_at // 0 | . > 0')" "true" "stopped_at recorded on cap stop"
 assert_contains "$(cat "$rd3/supervisor.log")" "STOPPED reason=cap:gen" "cap STOP logged"
 assert_contains "$(cat "$log3")" "kill-pane -t %7" "pane killed on cap stop"
 assert_eq "$(grep -c 'kill-session' "$log3")" "0" "never kill-session"
