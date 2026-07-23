@@ -13,10 +13,12 @@ and the run continues.
 ## How it works
 
 - A **supervisor** daemon owns the run: it reads context %, decides when to
-  rotate, and drives the handoff → settle → relaunch → inject cycle. Teardown
-  waits for both the handoff marker and the outgoing generation's post-handoff
-  Stop (so its final message finishes rendering) before replacing the pane,
-  backstopped by `--rotation-timeout`.
+  rotate, and drives the handoff → settle → graceful-exit → relaunch cycle.
+  Teardown is always **pane-scoped**: it sends `/exit` so Claude runs its own
+  shutdown (SessionEnd hook, transcript flush), waits up to `--exit-timeout`,
+  then replaces the pane (rotation) or kills just that pane (stop) — never the
+  tmux session, so your other panes/windows are untouched. Ended runs persist
+  under `/tmp/relay-<user>/` for 7 days for post-mortem.
 - A bundled **Claude plugin** (loaded per-session via `--plugin-dir`, nothing
   installed globally) contributes two hooks:
   - a **Stop** hook that asks the supervisor "rotate or continue?" when the
@@ -111,6 +113,8 @@ When a run starts it prints the `run_id` and the attach/stop commands.
 | `--max-cost <usd>` | none | Cap: stop after cumulative cost (API-cost mode only). |
 | `--no-auto-continue` | off | Load handoff and wait, instead of auto-continuing. |
 | `--rotation-timeout <dur>` | `120s` | Wait for the outgoing generation to hand off and settle (its post-handoff Stop) before giving up on a rotation. On timeout, a written handoff still rotates; otherwise the attempt is abandoned and retried on the next Stop. |
+| `--rotate-grace <dur>` | `2s` | Pause before teardown so the outgoing agent's final message stays readable. |
+| `--exit-timeout <dur>` | `5s` | Wait for a clean `/exit` before force-killing the pane. |
 | `--switch` | off | When nested in tmux (e.g. byobu), switch the client to the new session on launch. Default: stay put and print the attach command. |
 
 ### Subcommands
