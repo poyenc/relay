@@ -10,6 +10,11 @@ source "$HERE/lib/handoff_instruction.sh"
 : "${RELAY_ROTATION_TIMEOUT:=120}"
 : "${RELAY_TMUX:=tmux}"
 : "${RELAY_NUDGE_DELAY:=2}"
+# Graceful-teardown knobs (threaded in by bin/relay). GRACE: seconds to let the
+# outgoing generation's final message finish rendering before /exit. EXIT_TIMEOUT:
+# seconds to wait for a clean /exit (poll #{pane_dead}) before force-killing.
+: "${RELAY_ROTATE_GRACE:=2}"
+: "${RELAY_EXIT_TIMEOUT:=5}"
 RUN_DIR=""; ONCE=0
 while [ $# -gt 0 ]; do case "$1" in
   --run-dir) RUN_DIR="$2"; shift 2;;
@@ -95,6 +100,35 @@ _run_elapsed_s() {
   now="$(date +%s)"; echo $(( now - epoch ))
 }
 
+# Ask the live claude in the hosted pane to /exit so it runs its own shutdown
+# path (SessionEnd hook, transcript flush, no orphaned Bash-tool children) before
+# the caller force-kills. Pane-scoped: targets relay's launched pane, never the
+# session, so a user split/window is untouched. Sequence: grace pause (final
+# message stays readable) -> capture pane to a log -> remain-on-exit=on (dead pane
+# lingers so we can detect the exit) -> /exit -> poll #{pane_dead} up to
+# RELAY_EXIT_TIMEOUT. Leaves the dead-or-dying pane for the caller to respawn
+# (rotation) or kill-pane (stop). No-op if the pane is already gone. Logs which path ran.
+graceful_teardown() {  # <gen> <tag>
+  local gen="$1" tag="$2" sess pane target i
+  sess="$(relay_state_get "$RUN_DIR" '.tmux_session // ""')"
+  [ -n "$sess" ] || return 0
+  pane="$(relay_state_get "$RUN_DIR" '.tmux_pane // ""')"
+  target="${pane:-$sess}"
+  [ "$RELAY_ROTATE_GRACE" = "0" ] || sleep "$RELAY_ROTATE_GRACE"
+  mkdir -p "$RUN_DIR/gen-$gen"
+  "$RELAY_TMUX" capture-pane -p -t "$target" > "$RUN_DIR/gen-$gen/pane.log" 2>/dev/null \
+    || log "TEARDOWN_WARN capture_failed target=$target tag=$tag"
+  "$RELAY_TMUX" set-option -p -t "$target" remain-on-exit on 2>/dev/null || true
+  "$RELAY_TMUX" send-keys -t "$target" "/exit" Enter 2>/dev/null || true
+  for i in $(seq 1 "$RELAY_EXIT_TIMEOUT"); do
+    if [ "$("$RELAY_TMUX" list-panes -t "$target" -F '#{pane_dead}' 2>/dev/null | head -n1)" = "1" ]; then
+      log "TEARDOWN_EXIT_CLEAN gen=$gen tag=$tag"; return 0
+    fi
+    sleep 1
+  done
+  log "TEARDOWN_EXIT_TIMEOUT gen=$gen tag=$tag force=1"
+}
+
 # Stop the run: kill the tmux session (session-scoped only) and mark stopped.
 # The EXIT trap deletes the run dir; the loop exits after this.
 stop_run() {  # <reason>
@@ -123,11 +157,15 @@ actuate_rotation() {  # <from_gen> <handoff_md>
   # NOTE: jq's `//` treats false as empty, so a plain `.auto_continue // true`
   # would turn an explicit false into true. Null-check explicitly.
   auto="$(relay_state_get "$RUN_DIR" 'if .auto_continue == null then true else .auto_continue end')"
+  graceful_teardown "$from_gen" "rotate"
+  # respawn-pane -k relaunches the next gen; -k force-kills if /exit hung.
   "$RELAY_TMUX" respawn-pane -k -t "$target" \
     -e "RELAY_RUN_DIR=$RUN_DIR" \
     -e "RELAY_STATE=$RUN_DIR/statusline.json" \
     -e "RELAY_HANDOFF_PATH=$handoff" \
     "$cmd" 2>/dev/null || log "ACTUATE_WARN respawn_failed target=$target"
+  # Restore default so a future manual exit collapses the pane as usual.
+  "$RELAY_TMUX" set-option -p -t "$target" remain-on-exit off 2>/dev/null || true
   if [ "$auto" = "true" ]; then
     # Give the fresh claude a moment to boot before typing into it. Synchronous
     # (not backgrounded) so it is deterministic; a brief pause at a rare rotation

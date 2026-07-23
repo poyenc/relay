@@ -19,15 +19,18 @@ relay_state_set "$rd" '.tmux_pane="%7"'   # rotation must target this pane, not 
 relay_state_set "$rd" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
 : > "$rd/gen-1/handoff.ready"
 log="$rd/tmux.log"; : > "$log"
-FAKE_TMUX_LOG="$log" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
+FAKE_TMUX_LOG="$log" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 RELAY_ROTATE_GRACE=0 \
   bash bin/relay-supervisor.sh --run-dir "$rd" --once
 assert_eq "$(relay_state_get "$rd" '.generation')" "2" "gen bumped after actuated rotation"
 assert_eq "$(relay_state_get "$rd" '.rotation_pending')" "false" "pending cleared"
+assert_contains "$(cat "$log")" "send-keys -t %7 /exit Enter" "graceful /exit sent to the launched pane"
+assert_contains "$(cat "$log")" "capture-pane -p -t %7" "pane captured before teardown"
 assert_contains "$(cat "$log")" "respawn-pane -k -t %7" "respawn-pane targets the launched pane"
 assert_contains "$(cat "$log")" "RELAY_HANDOFF_PATH=$rd/gen-1/handoff.md" "next-gen handoff env passed"
 assert_contains "$(cat "$log")" "RELAY_RUN_DIR=$rd" "run dir env re-exported"
 assert_contains "$(cat "$log")" "claude --plugin-dir /x" "launch cmd reused on respawn"
-assert_contains "$(cat "$log")" "send-keys -t %7" "auto-continue nudge sent to the launched pane"
+assert_contains "$(cat "$log")" "send-keys -t %7 Continue from the handoff above." "auto-continue nudge sent to the launched pane"
+assert_file_exists "$rd/gen-1/pane.log" "pane output persisted to gen dir"
 
 # ---------- 2. --no-auto-continue -> no nudge ----------
 rd2="$(mktemp -d)"; mkdir -p "$rd2/gen-1"
@@ -36,11 +39,26 @@ seed_live "$rd2" false
 relay_state_set "$rd2" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
 : > "$rd2/gen-1/handoff.ready"
 log2="$rd2/tmux.log"; : > "$log2"
-FAKE_TMUX_LOG="$log2" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
+FAKE_TMUX_LOG="$log2" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 RELAY_ROTATE_GRACE=0 \
   bash bin/relay-supervisor.sh --run-dir "$rd2" --once
 # no .tmux_pane seeded -> falls back to the session target (legacy runs)
 assert_contains "$(cat "$log2")" "respawn-pane -k -t relay-test" "respawn falls back to session when no pane stored"
-assert_eq "$(grep -c 'send-keys' "$log2")" "0" "no nudge when auto-continue off"
+assert_contains "$(cat "$log2")" "send-keys -t relay-test /exit Enter" "graceful /exit still sent"
+assert_eq "$(grep -c 'Continue from the handoff' "$log2")" "0" "no nudge when auto-continue off"
+
+# ---------- 2b. /exit hangs -> poll times out, force-kill via respawn still fires ----------
+rdt="$(mktemp -d)"; mkdir -p "$rdt/gen-1"
+relay_state_init "$rdt" 60 "" "" "" $$
+seed_live "$rdt" true
+relay_state_set "$rdt" '.tmux_pane="%7" | .rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
+: > "$rdt/gen-1/handoff.ready"
+logt="$rdt/tmux.log"; : > "$logt"
+# FAKE_PANE_DEAD=0 -> pane never reports dead -> poll exhausts RELAY_EXIT_TIMEOUT
+FAKE_TMUX_LOG="$logt" FAKE_PANE_DEAD=0 RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 RELAY_ROTATE_GRACE=0 RELAY_EXIT_TIMEOUT=1 \
+  bash bin/relay-supervisor.sh --run-dir "$rdt" --once
+assert_contains "$(cat "$rdt/supervisor.log")" "TEARDOWN_EXIT_TIMEOUT" "hung /exit logs timeout"
+assert_contains "$(cat "$logt")" "respawn-pane -k -t %7" "force-kill respawn still fires after timeout"
+assert_eq "$(relay_state_get "$rdt" '.generation')" "2" "rotation completes despite hung /exit"
 
 # ---------- 3. cap hit at rotation edge -> STOPPED, session killed, no bump ----------
 rd3="$(mktemp -d)"; mkdir -p "$rd3/gen-1"
