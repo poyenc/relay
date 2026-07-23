@@ -12,12 +12,12 @@ relay_state_init "$rd" 1 "" "" "" $$          # threshold 1% -> always rotate
 printf '{"context_window":{"used_percentage":50}}' > "$rd/statusline.json"
 
 # run supervisor in background
-# NOTE: RELAY_MARKER_TIMEOUT raised from the 120s default. In this environment
+# NOTE: RELAY_ROTATION_TIMEOUT raised from the 120s default. In this environment
 # the spawned headless `claude -p` session is slowed considerably by a global
 # rtk PreToolUse hook that intercepts/requires approval for many Bash calls,
 # pushing real end-to-end handoff-writing time past 120s (observed ~215s).
 # 280s gives enough margin without masking a genuinely broken rotation.
-RELAY_MARKER_TIMEOUT=280 bash bin/relay-supervisor.sh --run-dir "$rd" &
+RELAY_ROTATION_TIMEOUT=280 bash bin/relay-supervisor.sh --run-dir "$rd" &
 sup=$!
 trap 'kill $sup 2>/dev/null; wait $sup 2>/dev/null' EXIT
 

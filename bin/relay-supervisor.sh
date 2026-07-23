@@ -7,7 +7,7 @@ source "$HERE/lib/telemetry.sh"
 source "$HERE/lib/policy.sh"
 source "$HERE/lib/handoff_instruction.sh"
 
-: "${RELAY_MARKER_TIMEOUT:=120}"
+: "${RELAY_ROTATION_TIMEOUT:=120}"
 : "${RELAY_TMUX:=tmux}"
 : "${RELAY_NUDGE_DELAY:=2}"
 RUN_DIR=""; ONCE=0
@@ -158,7 +158,7 @@ handle_pending_rotation() {
   else
     since="$(relay_state_get "$RUN_DIR" '.pending_since // 0')"
     now="$(date +%s)"; age=$(( now - since ))
-    if [ "$age" -ge "$RELAY_MARKER_TIMEOUT" ]; then
+    if [ "$age" -ge "$RELAY_ROTATION_TIMEOUT" ]; then
       relay_state_set "$RUN_DIR" '.rotation_pending=false | .pending_marker=null'
       log "ROTATE_FAILED reason=marker_timeout age=${age}s"
     fi

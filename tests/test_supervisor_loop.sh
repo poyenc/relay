@@ -48,7 +48,7 @@ assert_contains "$(cat "$rd4/supervisor.log")" "STOPPED reason=cap:gen" "cap STO
 # --- marker timeout -> ROTATE_FAILED ---
 rd3="$(mktemp -d)"; mkdir -p "$rd3/gen-1"; relay_state_init "$rd3" 60 "" "" "" $$
 relay_state_set "$rd3" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0'
-RELAY_MARKER_TIMEOUT=1 bash bin/relay-supervisor.sh --run-dir "$rd3" --once
+RELAY_ROTATION_TIMEOUT=1 bash bin/relay-supervisor.sh --run-dir "$rd3" --once
 assert_eq "$(relay_state_get "$rd3" '.rotation_pending')" "false" "timeout clears pending"
 assert_contains "$(cat "$rd3/supervisor.log")" "ROTATE_FAILED" "failure logged"
 

@@ -45,7 +45,7 @@ relay_cmd_launch() {
   # start the supervisor daemon (owns rotation + lifecycle + run-dir teardown)
   # Detach the daemon's stdio to its log - it must not write to the user's
   # terminal, and leaving fd1 open to a parent `$(relay ...)` would deadlock it.
-  RELAY_MARKER_TIMEOUT="$RELAY_OPT_MARKER_TIMEOUT" RELAY_TMUX="$RELAY_TMUX" \
+  RELAY_ROTATION_TIMEOUT="$RELAY_OPT_ROTATION_TIMEOUT" RELAY_TMUX="$RELAY_TMUX" \
     "$RELAY_SUPERVISOR_BIN" --run-dir "$rd" >>"$rd/supervisor.log" 2>&1 &
   local sup=$!
   jq --argjson pid "$sup" '.supervisor_pid=$pid' "$rd/state.json" \

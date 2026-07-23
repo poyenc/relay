@@ -18,7 +18,7 @@ relay_parse_args
 assert_eq "$?" "0" "bare parse ok"
 assert_eq "$RELAY_MODE" "launch" "bare -> launch"
 assert_eq "$RELAY_OPT_ROTATE_AT" "60" "default rotate-at 60"
-assert_eq "$RELAY_OPT_MARKER_TIMEOUT" "120" "default marker-timeout 120"
+assert_eq "$RELAY_OPT_ROTATION_TIMEOUT" "120" "default rotation-timeout 120"
 assert_eq "$RELAY_OPT_AUTO_CONTINUE" "1" "auto-continue on by default"
 assert_eq "$RELAY_OPT_MAX_GEN" "" "no gen cap"
 assert_eq "$RELAY_OPT_MAX_RUNTIME_S" "" "no runtime cap"
@@ -27,7 +27,7 @@ assert_eq "${#RELAY_CLAUDE_ARGS[@]}" "0" "no claude args"
 
 # --- full launch flags + `--` split ---
 relay_parse_args --rotate-at 45 --max-gen 5 --max-runtime 90m --max-cost 12.50 \
-  --no-auto-continue --marker-timeout 200 -- --model opus -p "hello world"
+  --no-auto-continue --rotation-timeout 90s -- --model opus -p "hello world"
 assert_eq "$?" "0" "full parse ok"
 assert_eq "$RELAY_MODE" "launch" "flags -> launch"
 assert_eq "$RELAY_OPT_ROTATE_AT" "45" "rotate-at parsed"
@@ -35,7 +35,7 @@ assert_eq "$RELAY_OPT_MAX_GEN" "5" "max-gen parsed"
 assert_eq "$RELAY_OPT_MAX_RUNTIME_S" "5400" "max-runtime -> seconds"
 assert_eq "$RELAY_OPT_MAX_COST" "12.50" "max-cost parsed"
 assert_eq "$RELAY_OPT_AUTO_CONTINUE" "0" "no-auto-continue flips off"
-assert_eq "$RELAY_OPT_MARKER_TIMEOUT" "200" "marker-timeout parsed"
+assert_eq "$RELAY_OPT_ROTATION_TIMEOUT" "90" "rotation-timeout duration -> seconds"
 assert_eq "${#RELAY_CLAUDE_ARGS[@]}" "4" "4 claude args after --"
 assert_eq "${RELAY_CLAUDE_ARGS[0]}" "--model" "claude arg 0"
 assert_eq "${RELAY_CLAUDE_ARGS[3]}" "hello world" "claude arg 3 (quoted preserved)"
@@ -68,6 +68,10 @@ assert_contains "$RELAY_PARSE_ERR" "attach" "err mentions attach"
 if relay_parse_args --bogus; then assert_eq bad ok "unknown flag rejected"; else assert_ok "unknown flag rejected"; fi
 if relay_parse_args --rotate-at; then assert_eq bad ok "rotate-at needs value"; else assert_ok "rotate-at missing value rejected"; fi
 if relay_parse_args --rotate-at 60 --list; then assert_eq bad ok "mixing launch flags with subcommand rejected"; else assert_ok "launch-flag + subcommand rejected"; fi
+if relay_parse_args --rotation-timeout; then assert_eq bad ok "rotation-timeout needs value"; else assert_ok "rotation-timeout missing value rejected"; fi
+if relay_parse_args --rotation-timeout bogus; then assert_eq bad ok "rotation-timeout rejects garbage"; else assert_ok "rotation-timeout invalid duration rejected"; fi
+relay_parse_args --rotation-timeout 2m
+assert_eq "$RELAY_OPT_ROTATION_TIMEOUT" "120" "rotation-timeout 2m -> 120s"
 
 # --- statusline install flag ---
 relay_parse_args --install-statusline /home/me/.claude/statusline.sh
@@ -93,7 +97,7 @@ assert_contains "$u" "--max-gen" "usage: max-gen"
 assert_contains "$u" "--max-runtime" "usage: max-runtime"
 assert_contains "$u" "--max-cost" "usage: max-cost"
 assert_contains "$u" "--no-auto-continue" "usage: no-auto-continue"
-assert_contains "$u" "--marker-timeout" "usage: marker-timeout"
+assert_contains "$u" "--rotation-timeout" "usage: rotation-timeout"
 assert_contains "$u" "--list" "usage: list"
 assert_contains "$u" "--attach" "usage: attach"
 assert_contains "$u" "--stop" "usage: stop"

@@ -35,7 +35,8 @@ Launch flags:
   --max-runtime <dur>    Cap: stop after wall-clock (e.g. 30s, 90m, 8h, 2d).
   --max-cost <usd>       Cap: stop after cumulative cost (API-cost mode only).
   --no-auto-continue     Load handoff and wait (default auto-continues).
-  --marker-timeout <s>   Handoff wait before ROTATE_FAILED (default 120).
+  --rotation-timeout <dur> Wait for the outgoing generation to hand off and
+                         settle before giving up on a rotation (default 120s).
   --switch               When nested in tmux (e.g. byobu), switch the client to
                          the new session on launch. Default: stay put and print
                          the attach command (keeps your current window view).
@@ -57,7 +58,7 @@ EOF
 # Parse relay's own argv. Populates:
 #   RELAY_MODE : launch | list | attach | stop | status | install-statusline
 #   RELAY_ARG_ID : run_id (attach/stop/status) or file path (install-statusline)
-#   RELAY_OPT_ROTATE_AT / MAX_GEN / MAX_RUNTIME_S / MAX_COST / MARKER_TIMEOUT / AUTO_CONTINUE
+#   RELAY_OPT_ROTATE_AT / MAX_GEN / MAX_RUNTIME_S / MAX_COST / ROTATION_TIMEOUT / AUTO_CONTINUE
 #   RELAY_CLAUDE_ARGS : array of args after `--`, passed verbatim to claude
 # On error: returns nonzero and sets RELAY_PARSE_ERR.
 relay_parse_args() {
@@ -67,7 +68,7 @@ relay_parse_args() {
   RELAY_OPT_MAX_GEN=""
   RELAY_OPT_MAX_RUNTIME_S=""
   RELAY_OPT_MAX_COST=""
-  RELAY_OPT_MARKER_TIMEOUT="120"
+  RELAY_OPT_ROTATION_TIMEOUT="120"
   RELAY_OPT_AUTO_CONTINUE="1"
   RELAY_OPT_SWITCH="0"
   RELAY_CLAUDE_ARGS=()
@@ -91,9 +92,10 @@ relay_parse_args() {
       --max-cost)
         [ $# -ge 2 ] || { RELAY_PARSE_ERR="--max-cost requires a value"; return 1; }
         RELAY_OPT_MAX_COST="$2"; saw_launch_flag=1; shift 2 ;;
-      --marker-timeout)
-        [ $# -ge 2 ] || { RELAY_PARSE_ERR="--marker-timeout requires a value"; return 1; }
-        RELAY_OPT_MARKER_TIMEOUT="$2"; saw_launch_flag=1; shift 2 ;;
+      --rotation-timeout)
+        [ $# -ge 2 ] || { RELAY_PARSE_ERR="--rotation-timeout requires a value"; return 1; }
+        dur="$(relay_parse_duration "$2")" || { RELAY_PARSE_ERR="invalid --rotation-timeout: $2"; return 1; }
+        RELAY_OPT_ROTATION_TIMEOUT="$dur"; saw_launch_flag=1; shift 2 ;;
       --no-auto-continue)
         RELAY_OPT_AUTO_CONTINUE="0"; saw_launch_flag=1; shift ;;
       --switch)
