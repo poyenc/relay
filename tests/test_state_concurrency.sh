@@ -26,7 +26,8 @@ for i in $(seq 1 "$N"); do
 done
 assert_eq "$missing" "0" "all $N concurrent field writes persisted (no lost updates)"
 
-# c) no leftover temp files
-assert_eq "$(ls "$rd"/state.json.*tmp* 2>/dev/null | wc -l | tr -d ' ')" "0" "no leftover temp files"
+# c) no leftover temp files (unique temps are named state.json.XXXXXX; the real
+# file is exactly state.json, so any state.json.<suffix> sibling is a leftover)
+assert_eq "$(ls "$rd"/state.json.* 2>/dev/null | wc -l | tr -d ' ')" "0" "no leftover temp files"
 
 finish
