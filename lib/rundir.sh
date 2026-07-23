@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run-directory lifecycle: root, create, discover live, prune dead.
-relay_root() { printf '%s/relay-%s' "${TMPDIR:-/tmp}" "$(id -u)"; }
+relay_root() { printf '%s/relay-%s' "${TMPDIR:-/tmp}" "$(id -un)"; }
 
 # True iff <pid> is actually THIS run's supervisor, not just any live process with
 # that PID. `kill -0` alone is unsafe: after the supervisor dies its PID can be
