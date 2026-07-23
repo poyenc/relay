@@ -45,6 +45,19 @@ assert_contains "$(cat "$log2")" "respawn-pane -k -t %7" "respawn targets the la
 assert_contains "$(cat "$log2")" "send-keys -t %7 /exit Enter" "graceful /exit sent to pane"
 assert_eq "$(grep -c 'Continue from the handoff' "$log2")" "0" "no nudge when auto-continue off"
 
+# ---------- 2c. legacy run with no .tmux_pane -> teardown/respawn fall back to session ----------
+rdlg="$(mktemp -d)"; mkdir -p "$rdlg/gen-1"
+relay_state_init "$rdlg" 60 "" "" "" $$
+# seed_live sets .tmux_pane="%7"; delete it to model a run predating pane capture
+relay_state_set "$rdlg" '.tmux_session="relay-test" | .launch_cmd="claude --plugin-dir /x" | .auto_continue=true | .pane_seen=true'
+relay_state_set "$rdlg" '.tmux_pane=null | .rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
+: > "$rdlg/gen-1/handoff.ready"
+loglg="$rdlg/tmux.log"; : > "$loglg"
+FAKE_TMUX_LOG="$loglg" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 RELAY_ROTATE_GRACE=0 \
+  bash bin/relay-supervisor.sh --run-dir "$rdlg" --once
+assert_contains "$(cat "$loglg")" "respawn-pane -k -t relay-test" "no pane -> respawn falls back to session"
+assert_contains "$(cat "$loglg")" "send-keys -t relay-test /exit Enter" "no pane -> /exit falls back to session"
+
 # ---------- 2b. /exit hangs -> poll times out, force-kill via respawn still fires ----------
 rdt="$(mktemp -d)"; mkdir -p "$rdt/gen-1"
 relay_state_init "$rdt" 60 "" "" "" $$
