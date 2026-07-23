@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regression for the "dead-air" window: if a rotate block was missed (hook timed
 # out), the next idle Stop while rotation_pending must re-deliver the instruction
-# instead of returning {} and waiting for marker_timeout.
+# instead of returning {} and waiting for rotation_timeout.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 source tests/assert.sh
@@ -22,7 +22,7 @@ printf '{"hook_event_name":"Stop","transcript_path":"/none","stop_hook_active":f
 bash bin/relay-supervisor.sh --run-dir "$rd" --once
 assert_contains "$(cat "$rd/stop-response.json")" '"decision":"block"' "re-armed with block"
 assert_contains "$(cat "$rd/supervisor.log")" "ROTATE_REARM" "re-arm logged"
-# pending_since must NOT be reset (marker_timeout backstop must still fire from original)
+# pending_since must NOT be reset (rotation_timeout backstop must still fire from original)
 assert_eq "$(relay_state_get "$rd" '.pending_since')" "$since_before" "pending_since preserved on re-arm"
 
 # --- 2. loop safety: stop_hook_active=true while pending -> {} (never re-block) ---

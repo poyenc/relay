@@ -34,7 +34,7 @@ handle_stop_request() {
 
   # Re-arm: if a rotation is already pending but the handoff marker hasn't appeared,
   # a fresh idle Stop means the earlier block was missed (hook timed out). Re-deliver
-  # the instruction now instead of returning {} and waiting out marker_timeout -
+  # the instruction now instead of returning {} and waiting out rotation_timeout -
   # closes the dead-air window. Loop-safety: never re-block when stop_hook_active.
   if [ "$(relay_state_get "$RUN_DIR" '.rotation_pending')" = "true" ]; then
     marker="$(relay_state_get "$RUN_DIR" '.pending_marker')"
