@@ -30,6 +30,9 @@ live2_rd="$(relay_root)/run-2026-bbbb"; mkdir -p "$live2_rd"
 bash tests/fake-supervisor.sh --run-dir "$live2_rd" >/dev/null 2>&1 & LIVE2=$!
 live2_rd="$(mk_run bbbb "$LIVE2" 1)"
 dead_rd="$(mk_run cccc 999999 2)"
+# age the dead run past the 7-day retention so list's prune reaps it
+jq '.status="stopped" | .stopped_at=(now - 8*86400 | floor)' "$dead_rd/state.json" \
+  > "$dead_rd/state.json.tmp" && mv "$dead_rd/state.json.tmp" "$dead_rd/state.json"
 trap 'kill "$LIVE1" "$LIVE2" 2>/dev/null' EXIT
 
 # --- resolver: unique prefix match ---

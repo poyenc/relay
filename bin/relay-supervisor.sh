@@ -289,5 +289,6 @@ iterate() {
 
 STOP_NOW=0
 if [ "$ONCE" -eq 1 ]; then iterate; exit 0; fi
-trap 'rm -rf "$RUN_DIR"' EXIT
+# Run dir is NOT deleted on exit - ended runs persist for post-mortem and are
+# reaped by relay_prune_dead after 7 days (see lib/rundir.sh).
 while true; do iterate; [ "$STOP_NOW" -eq 1 ] && break; sleep 0.2; done

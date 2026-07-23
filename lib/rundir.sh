@@ -41,15 +41,26 @@ relay_list_live() {
   done
 }
 
+# Prune ended run dirs, but only when stale (> 7 days since they ended). A run is
+# "ended" when its supervisor PID is not live; "ended-at" is .stopped_at if
+# present, else the state.json mtime. Live runs are never pruned. This keeps
+# recent runs on disk for post-mortem (handoff, pane.log, supervisor.log).
 relay_prune_dead() {
-  local root; root="$(relay_root)"; local d pid
+  local root; root="$(relay_root)"; local d pid ended now age
+  local ttl=604800   # 7 days in seconds
   [ -d "$root" ] || return 0
+  now="$(date +%s)"
   for d in "$root"/*; do
     [ -d "$d" ] || continue
     if [ -f "$d/state.json" ]; then
       pid="$(jq -r '.supervisor_pid // empty' "$d/state.json" 2>/dev/null)"
       if [ -n "$pid" ] && relay_pid_is_supervisor "$pid" "$d"; then continue; fi
+      ended="$(jq -r '.stopped_at // empty' "$d/state.json" 2>/dev/null)"
+      [ -n "$ended" ] || ended="$(stat -c %Y "$d/state.json" 2>/dev/null || echo 0)"
+    else
+      ended="$(stat -c %Y "$d" 2>/dev/null || echo 0)"
     fi
-    rm -rf "$d"
+    age=$(( now - ended ))
+    [ "$age" -ge "$ttl" ] && rm -rf "$d"
   done
 }

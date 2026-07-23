@@ -20,22 +20,25 @@ LIVE=$!
 sleep 60 >/dev/null 2>&1 & IMP=$!
 trap 'kill "$LIVE" "$IMP" 2>/dev/null' EXIT
 echo "{\"supervisor_pid\": $LIVE, \"generation\": 2}" > "$rd/state.json"
-dead="$(relay_root)/run-20200101-dead01"; mkdir -p "$dead"
-echo '{"supervisor_pid": 999999, "generation": 1}' > "$dead/state.json"
+# recently-ended run (stopped 1h ago): must SURVIVE prune
+recent="$(relay_root)/run-20200101-recent"; mkdir -p "$recent"
+echo "{\"supervisor_pid\": 999999, \"generation\": 1, \"status\": \"stopped\", \"stopped_at\": $(( $(date +%s) - 3600 ))}" > "$recent/state.json"
+# stale-ended run (stopped 8 days ago): must be PRUNED
+stale="$(relay_root)/run-20200101-stale"; mkdir -p "$stale"
+echo "{\"supervisor_pid\": 999999, \"generation\": 1, \"status\": \"stopped\", \"stopped_at\": $(( $(date +%s) - 8*86400 ))}" > "$stale/state.json"
 
 live="$(relay_list_live)"
 assert_contains "$live" "$rd" "live run listed"
-assert_eq "$(printf '%s' "$live" | grep -c "$dead")" "0" "dead run not listed"
+assert_eq "$(printf '%s' "$live" | grep -c "$recent")" "0" "ended run not listed as live"
 
-# PID-recycling guard: a live process whose argv does NOT carry this run dir must
-# NOT count as the supervisor (kill -0 alone would wrongly report it live).
+# PID-recycling guard (unchanged)
 imposter="$(relay_root)/run-20200101-imposter"; mkdir -p "$imposter"
 echo "{\"supervisor_pid\": $IMP, \"generation\": 1}" > "$imposter/state.json"
 assert_eq "$(relay_list_live | grep -c "$imposter")" "0" "recycled-PID imposter not listed"
 
 relay_prune_dead
-assert_file_absent "$dead" "dead run pruned"
-assert_file_absent "$imposter" "imposter run pruned (argv mismatch)"
 assert_file_exists "$rd" "live run survives prune"
+assert_file_exists "$recent" "recently-ended run survives prune (< 7 days)"
+assert_file_absent "$stale" "stale-ended run pruned (> 7 days)"
 
 finish
