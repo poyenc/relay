@@ -45,6 +45,11 @@ handle_stop_request() {
       mv "$RUN_DIR/stop-response.json.tmp" "$RUN_DIR/stop-response.json"
       log "ROTATE_REARM gen=$gen"
     else
+      # Marker present means the handoff is written and this is the FIRST idle Stop
+      # after it - the "post-handoff stop". Record that the outgoing generation has
+      # settled so handle_pending_rotation tears down now (final message rendered),
+      # not the instant the marker file appeared mid-turn.
+      [ -f "$RUN_DIR/$marker" ] && relay_state_set "$RUN_DIR" '.handoff_settled=true'
       printf '{}' > "$RUN_DIR/stop-response.json.tmp"
       mv "$RUN_DIR/stop-response.json.tmp" "$RUN_DIR/stop-response.json"
     fi
@@ -69,7 +74,7 @@ handle_stop_request() {
     marker="gen-$gen/handoff.ready"
     mkdir -p "$RUN_DIR/gen-$gen"
     relay_state_set "$RUN_DIR" \
-      ".rotation_pending=true | .pending_marker=\"$marker\" | .pending_since=$(date +%s) | .pending_pct=${pct:-0}"
+      ".rotation_pending=true | .pending_marker=\"$marker\" | .pending_since=$(date +%s) | .pending_pct=${pct:-0} | .handoff_settled=false"
     relay_handoff_instruction "$RUN_DIR/gen-$gen/handoff.md" "$RUN_DIR/$marker" \
       | jq -Rsc '{decision:"block", reason: .}' > "$RUN_DIR/stop-response.json.tmp"
     mv "$RUN_DIR/stop-response.json.tmp" "$RUN_DIR/stop-response.json"
@@ -134,9 +139,14 @@ actuate_rotation() {  # <from_gen> <handoff_md>
 
 handle_pending_rotation() {
   [ "$(relay_state_get "$RUN_DIR" '.rotation_pending')" = "true" ] || return 0
-  local marker gen since now age pct cap
+  local marker gen since now age pct cap settled
   marker="$(relay_state_get "$RUN_DIR" '.pending_marker')"
-  if [ -f "$RUN_DIR/$marker" ]; then
+  # Wait for BOTH the handoff marker AND the outgoing generation to settle (the
+  # post-handoff Stop). The marker says "handoff written" (created mid-turn); the
+  # settled flag says "turn complete, final message rendered". Acting on the marker
+  # alone would kill the pane before its final message finished printing.
+  settled="$(relay_state_get "$RUN_DIR" '.handoff_settled // false')"
+  if [ -f "$RUN_DIR/$marker" ] && [ "$settled" = "true" ]; then
     gen="$(relay_state_get "$RUN_DIR" '.generation')"
     pct="$(relay_state_get "$RUN_DIR" '.pending_pct')"
     # Caps are evaluated at the rotation edge: if the NEXT generation would breach
@@ -159,8 +169,30 @@ handle_pending_rotation() {
     since="$(relay_state_get "$RUN_DIR" '.pending_since // 0')"
     now="$(date +%s)"; age=$(( now - since ))
     if [ "$age" -ge "$RELAY_ROTATION_TIMEOUT" ]; then
-      relay_state_set "$RUN_DIR" '.rotation_pending=false | .pending_marker=null'
-      log "ROTATE_FAILED reason=marker_timeout age=${age}s"
+      if [ -f "$RUN_DIR/$marker" ]; then
+        # Handoff exists but the post-handoff Stop never arrived (flaky hook). Do
+        # NOT waste a valid handoff - rotate directly, same as the normal gate.
+        gen="$(relay_state_get "$RUN_DIR" '.generation')"
+        pct="$(relay_state_get "$RUN_DIR" '.pending_pct')"
+        cap="$(relay_cap_hit "$RUN_DIR" "$(_run_elapsed_s)" "$(relay_cost_from_statusline "$RUN_DIR")")"
+        if [ "$cap" != "none" ]; then
+          rm -f "$RUN_DIR/$marker"
+          stop_run "cap:$cap"
+          return 0
+        fi
+        relay_state_add_rotation "$RUN_DIR" "$gen" "${pct:-0}"
+        relay_state_set "$RUN_DIR" \
+          ".generation=$((gen+1)) | .rotation_pending=false | .pending_marker=null | .next_handoff=\"$RUN_DIR/gen-$gen/handoff.md\""
+        mkdir -p "$RUN_DIR/gen-$((gen+1))"
+        rm -f "$RUN_DIR/$marker"
+        log "ROTATE_STOP_TIMEOUT from_gen=$gen to_gen=$((gen+1)) age=${age}s force=1"
+        actuate_rotation "$gen" "$RUN_DIR/gen-$gen/handoff.md"
+      else
+        # No handoff was ever produced - give up this attempt. Non-terminal: the
+        # run keeps living and can rotate again on a later Stop.
+        relay_state_set "$RUN_DIR" '.rotation_pending=false | .pending_marker=null'
+        log "ROTATE_FAILED reason=rotation_timeout age=${age}s"
+      fi
     fi
   fi
 }

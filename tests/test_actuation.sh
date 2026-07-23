@@ -16,7 +16,7 @@ rd="$(mktemp -d)"; mkdir -p "$rd/gen-1"
 relay_state_init "$rd" 60 "" "" "" $$
 seed_live "$rd" true
 relay_state_set "$rd" '.tmux_pane="%7"'   # rotation must target this pane, not the session
-relay_state_set "$rd" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70'
+relay_state_set "$rd" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
 : > "$rd/gen-1/handoff.ready"
 log="$rd/tmux.log"; : > "$log"
 FAKE_TMUX_LOG="$log" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
@@ -33,7 +33,7 @@ assert_contains "$(cat "$log")" "send-keys -t %7" "auto-continue nudge sent to t
 rd2="$(mktemp -d)"; mkdir -p "$rd2/gen-1"
 relay_state_init "$rd2" 60 "" "" "" $$
 seed_live "$rd2" false
-relay_state_set "$rd2" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70'
+relay_state_set "$rd2" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
 : > "$rd2/gen-1/handoff.ready"
 log2="$rd2/tmux.log"; : > "$log2"
 FAKE_TMUX_LOG="$log2" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
@@ -46,7 +46,7 @@ assert_eq "$(grep -c 'send-keys' "$log2")" "0" "no nudge when auto-continue off"
 rd3="$(mktemp -d)"; mkdir -p "$rd3/gen-1"
 relay_state_init "$rd3" 60 1 "" "" $$        # max_gen=1: next gen 2 exceeds cap
 seed_live "$rd3" true
-relay_state_set "$rd3" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70'
+relay_state_set "$rd3" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
 : > "$rd3/gen-1/handoff.ready"
 log3="$rd3/tmux.log"; : > "$log3"
 FAKE_TMUX_LOG="$log3" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
@@ -62,7 +62,7 @@ rd3b="$(mktemp -d)"; mkdir -p "$rd3b/gen-1"
 relay_state_init "$rd3b" 60 "" "" 1.0 $$        # max_cost=1.0
 seed_live "$rd3b" true
 printf '{"context_window":{"used_percentage":70},"cost":{"total_cost_usd":2.50}}' > "$rd3b/statusline.json"
-relay_state_set "$rd3b" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70'
+relay_state_set "$rd3b" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
 : > "$rd3b/gen-1/handoff.ready"
 log3b="$rd3b/tmux.log"; : > "$log3b"
 FAKE_TMUX_LOG="$log3b" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
