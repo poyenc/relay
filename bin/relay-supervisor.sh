@@ -129,14 +129,21 @@ graceful_teardown() {  # <gen> <tag>
   log "TEARDOWN_EXIT_TIMEOUT gen=$gen tag=$tag force=1"
 }
 
-# Stop the run: kill the tmux session (session-scoped only) and mark stopped.
-# The EXIT trap deletes the run dir; the loop exits after this.
+# Stop the run: graceful /exit teardown, then kill-pane (pane-scoped, never the
+# session). Persist status/stopped_at so the dir survives for post-mortem; the
+# loop exits after this. relay_prune_dead reaps the dir after 7 days.
 stop_run() {  # <reason>
-  local sess
+  local pane sess target gen
   sess="$(relay_state_get "$RUN_DIR" '.tmux_session // ""')"
-  relay_state_set "$RUN_DIR" '.status="stopped"'
+  pane="$(relay_state_get "$RUN_DIR" '.tmux_pane // ""')"
+  target="${pane:-$sess}"
+  gen="$(relay_state_get "$RUN_DIR" '.generation')"
+  graceful_teardown "$gen" "stop"
+  relay_state_set "$RUN_DIR" ".status=\"stopped\" | .stopped_at=$(date +%s)"
   log "STOPPED reason=$1"
-  [ -n "$sess" ] && "$RELAY_TMUX" kill-session -t "$sess" 2>/dev/null || true
+  # kill-pane reaps the (now dead) pane; if it was the last pane the session
+  # self-collapses. Never kill-session - a user's other panes/windows survive.
+  [ -n "$target" ] && "$RELAY_TMUX" kill-pane -t "$target" 2>/dev/null || true
   STOP_NOW=1
 }
 
@@ -235,21 +242,26 @@ handle_pending_rotation() {
   fi
 }
 
-# Lifecycle monitor: once the hosted session has been seen alive, its disappearance
-# means the user exited (or it crashed) - stop the run. rotation_pending deaths are
-# not possible here since respawn-pane keeps the session alive across a rotation.
+# Lifecycle monitor: once relay's pane has been seen alive, its DISAPPEARANCE
+# (pane no longer exists) means the user closed it - stop the run. A dead-but-
+# present pane (#{pane_dead}=1, left by our own graceful /exit mid-teardown) is
+# NOT "user quit" and is ignored here. Pane-scoped so a user's other panes are
+# irrelevant to relay's liveness.
 monitor_lifecycle() {
-  local sess seen
+  local sess pane target seen
   sess="$(relay_state_get "$RUN_DIR" '.tmux_session // ""')"
   [ -n "$sess" ] || return 0
-  if "$RELAY_TMUX" has-session -t "$sess" 2>/dev/null; then
-    seen="$(relay_state_get "$RUN_DIR" '.session_seen // false')"
-    [ "$seen" = "true" ] || relay_state_set "$RUN_DIR" '.session_seen=true'
+  pane="$(relay_state_get "$RUN_DIR" '.tmux_pane // ""')"
+  target="${pane:-$sess}"
+  # Pane present at all? (bare list-panes lists present panes, dead or alive.)
+  if [ -n "$("$RELAY_TMUX" list-panes -t "$target" -F '#{pane_id}' 2>/dev/null)" ]; then
+    seen="$(relay_state_get "$RUN_DIR" '.pane_seen // false')"
+    [ "$seen" = "true" ] || relay_state_set "$RUN_DIR" '.pane_seen=true'
     return 0
   fi
-  # session absent
-  if [ "$(relay_state_get "$RUN_DIR" '.session_seen // false')" = "true" ]; then
-    stop_run "session_gone"
+  # pane absent
+  if [ "$(relay_state_get "$RUN_DIR" '.pane_seen // false')" = "true" ]; then
+    stop_run "pane_gone"
   fi
 }
 

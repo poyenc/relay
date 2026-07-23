@@ -8,7 +8,7 @@ FAKE="$PWD/tests/fake-tmux.sh"; chmod +x "$FAKE"
 
 # helper: set launch metadata the supervisor needs to actuate a rotation
 seed_live() {  # <rd> <auto_continue>
-  relay_state_set "$1" ".tmux_session=\"relay-test\" | .launch_cmd=\"claude --plugin-dir /x\" | .auto_continue=$2 | .session_seen=true"
+  relay_state_set "$1" ".tmux_session=\"relay-test\" | .tmux_pane=\"%7\" | .launch_cmd=\"claude --plugin-dir /x\" | .auto_continue=$2 | .pane_seen=true"
 }
 
 # ---------- 1. rotation actuates: respawn-pane + send-keys nudge ----------
@@ -41,9 +41,8 @@ relay_state_set "$rd2" '.rotation_pending=true | .pending_marker="gen-1/handoff.
 log2="$rd2/tmux.log"; : > "$log2"
 FAKE_TMUX_LOG="$log2" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 RELAY_ROTATE_GRACE=0 \
   bash bin/relay-supervisor.sh --run-dir "$rd2" --once
-# no .tmux_pane seeded -> falls back to the session target (legacy runs)
-assert_contains "$(cat "$log2")" "respawn-pane -k -t relay-test" "respawn falls back to session when no pane stored"
-assert_contains "$(cat "$log2")" "send-keys -t relay-test /exit Enter" "graceful /exit still sent"
+assert_contains "$(cat "$log2")" "respawn-pane -k -t %7" "respawn targets the launched pane"
+assert_contains "$(cat "$log2")" "send-keys -t %7 /exit Enter" "graceful /exit sent to pane"
 assert_eq "$(grep -c 'Continue from the handoff' "$log2")" "0" "no nudge when auto-continue off"
 
 # ---------- 2b. /exit hangs -> poll times out, force-kill via respawn still fires ----------
@@ -67,12 +66,13 @@ seed_live "$rd3" true
 relay_state_set "$rd3" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
 : > "$rd3/gen-1/handoff.ready"
 log3="$rd3/tmux.log"; : > "$log3"
-FAKE_TMUX_LOG="$log3" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
+FAKE_TMUX_LOG="$log3" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 RELAY_ROTATE_GRACE=0 \
   bash bin/relay-supervisor.sh --run-dir "$rd3" --once
 assert_eq "$(relay_state_get "$rd3" '.generation')" "1" "gen NOT bumped when cap hit"
 assert_eq "$(relay_state_get "$rd3" '.status')" "stopped" "run marked stopped on cap"
 assert_contains "$(cat "$rd3/supervisor.log")" "STOPPED reason=cap:gen" "cap STOP logged"
-assert_contains "$(cat "$log3")" "kill-session -t relay-test" "session killed on cap stop"
+assert_contains "$(cat "$log3")" "kill-pane -t %7" "pane killed on cap stop"
+assert_eq "$(grep -c 'kill-session' "$log3")" "0" "never kill-session"
 assert_eq "$(grep -c 'respawn-pane' "$log3")" "0" "no respawn when cap hit"
 
 # ---------- 3b. cost cap at rotation edge -> STOPPED (reads statusline cost) ----------
@@ -83,37 +83,46 @@ printf '{"context_window":{"used_percentage":70},"cost":{"total_cost_usd":2.50}}
 relay_state_set "$rd3b" '.rotation_pending=true | .pending_marker="gen-1/handoff.ready" | .pending_since=0 | .pending_pct=70 | .handoff_settled=true'
 : > "$rd3b/gen-1/handoff.ready"
 log3b="$rd3b/tmux.log"; : > "$log3b"
-FAKE_TMUX_LOG="$log3b" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 \
+FAKE_TMUX_LOG="$log3b" RELAY_TMUX="$FAKE" RELAY_NUDGE_DELAY=0 RELAY_ROTATE_GRACE=0 \
   bash bin/relay-supervisor.sh --run-dir "$rd3b" --once
 assert_eq "$(relay_state_get "$rd3b" '.generation')" "1" "gen NOT bumped when cost cap hit"
 assert_contains "$(cat "$rd3b/supervisor.log")" "STOPPED reason=cap:cost" "cost cap STOP logged"
 
-# ---------- 4. liveness: session gone + seen before + not pending -> STOPPED ----------
+# ---------- 4. liveness: pane gone + seen before -> STOPPED ----------
 rd4="$(mktemp -d)"
 relay_state_init "$rd4" 60 "" "" "" $$
-seed_live "$rd4" true    # sets session_seen=true
+seed_live "$rd4" true    # sets pane_seen=true
 log4="$rd4/tmux.log"; : > "$log4"
-FAKE_TMUX_LOG="$log4" FAKE_HAS_SESSION=0 RELAY_TMUX="$FAKE" \
+FAKE_TMUX_LOG="$log4" FAKE_PANE_MISSING=1 RELAY_TMUX="$FAKE" RELAY_ROTATE_GRACE=0 \
   bash bin/relay-supervisor.sh --run-dir "$rd4" --once
-assert_eq "$(relay_state_get "$rd4" '.status')" "stopped" "user-exit detected -> stopped"
-assert_contains "$(cat "$rd4/supervisor.log")" "STOPPED reason=session_gone" "session-gone STOP logged"
+assert_eq "$(relay_state_get "$rd4" '.status')" "stopped" "pane-gone detected -> stopped"
+assert_contains "$(cat "$rd4/supervisor.log")" "STOPPED reason=pane_gone" "pane-gone STOP logged"
 
-# ---------- 5. liveness: session never came up -> do NOT stop ----------
+# ---------- 5. liveness: pane never came up -> do NOT stop ----------
 rd5="$(mktemp -d)"
 relay_state_init "$rd5" 60 "" "" "" $$
-relay_state_set "$rd5" '.tmux_session="relay-test"'   # configured but session_seen not set
+relay_state_set "$rd5" '.tmux_session="relay-test" | .tmux_pane="%7"'   # configured but pane_seen not set
 log5="$rd5/tmux.log"; : > "$log5"
-FAKE_TMUX_LOG="$log5" FAKE_HAS_SESSION=0 RELAY_TMUX="$FAKE" \
+FAKE_TMUX_LOG="$log5" FAKE_PANE_MISSING=1 RELAY_TMUX="$FAKE" \
   bash bin/relay-supervisor.sh --run-dir "$rd5" --once
-assert_eq "$(relay_state_get "$rd5" '.status // "none"')" "none" "no stop before session first seen"
+assert_eq "$(relay_state_get "$rd5" '.status // "none"')" "none" "no stop before pane first seen"
 
-# ---------- 6. liveness latches session_seen when alive ----------
+# ---------- 6. liveness latches pane_seen when alive ----------
 rd6="$(mktemp -d)"
 relay_state_init "$rd6" 60 "" "" "" $$
-relay_state_set "$rd6" '.tmux_session="relay-test"'
+relay_state_set "$rd6" '.tmux_session="relay-test" | .tmux_pane="%7"'
 log6="$rd6/tmux.log"; : > "$log6"
-FAKE_TMUX_LOG="$log6" FAKE_HAS_SESSION=1 RELAY_TMUX="$FAKE" \
+FAKE_TMUX_LOG="$log6" FAKE_PANE_MISSING=0 RELAY_TMUX="$FAKE" \
   bash bin/relay-supervisor.sh --run-dir "$rd6" --once
-assert_eq "$(relay_state_get "$rd6" '.session_seen')" "true" "session_seen latched when alive"
+assert_eq "$(relay_state_get "$rd6" '.pane_seen')" "true" "pane_seen latched when alive"
+
+# ---------- 7. dead-but-present pane (our own teardown) is NOT a stop ----------
+rd7="$(mktemp -d)"
+relay_state_init "$rd7" 60 "" "" "" $$
+seed_live "$rd7" true
+log7="$rd7/tmux.log"; : > "$log7"
+FAKE_TMUX_LOG="$log7" FAKE_PANE_MISSING=0 FAKE_PANE_DEAD=1 RELAY_TMUX="$FAKE" \
+  bash bin/relay-supervisor.sh --run-dir "$rd7" --once
+assert_eq "$(relay_state_get "$rd7" '.status // "none"')" "none" "dead-but-present pane does NOT trigger stop"
 
 finish
