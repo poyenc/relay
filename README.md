@@ -13,7 +13,10 @@ and the run continues.
 ## How it works
 
 - A **supervisor** daemon owns the run: it reads context %, decides when to
-  rotate, and drives the handoff → kill → relaunch → inject cycle.
+  rotate, and drives the handoff → settle → relaunch → inject cycle. Teardown
+  waits for both the handoff marker and the outgoing generation's post-handoff
+  Stop (so its final message finishes rendering) before replacing the pane,
+  backstopped by `--rotation-timeout`.
 - A bundled **Claude plugin** (loaded per-session via `--plugin-dir`, nothing
   installed globally) contributes two hooks:
   - a **Stop** hook that asks the supervisor "rotate or continue?" when the
@@ -107,7 +110,7 @@ When a run starts it prints the `run_id` and the attach/stop commands.
 | `--max-runtime <dur>` | none | Cap: stop after wall-clock (`30s`, `90m`, `8h`, `2d`). |
 | `--max-cost <usd>` | none | Cap: stop after cumulative cost (API-cost mode only). |
 | `--no-auto-continue` | off | Load handoff and wait, instead of auto-continuing. |
-| `--marker-timeout <s>` | `120` | How long to wait for the handoff before giving up on a rotation. |
+| `--rotation-timeout <dur>` | `120s` | Wait for the outgoing generation to hand off and settle (its post-handoff Stop) before giving up on a rotation. On timeout, a written handoff still rotates; otherwise the attempt is abandoned and retried on the next Stop. |
 | `--switch` | off | When nested in tmux (e.g. byobu), switch the client to the new session on launch. Default: stay put and print the attach command. |
 
 ### Subcommands
