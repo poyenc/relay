@@ -17,9 +17,9 @@ export TMPDIR; TMPDIR="$(mktemp -d)"    # isolate run root
 mk_run() {  # <suffix> <pid> <gen>
   local rd; rd="$(relay_root)/run-2026-$1"; mkdir -p "$rd"
   relay_state_init "$rd" 60 "" "" "" "$2"
-  jq --arg r "run-2026-$1" --argjson g "$3" --arg s "relay-run-2026-$1" \
-     '.run_id=$r | .generation=$g | .tmux_session=$s' \
-     "$rd/state.json" > "$rd/state.json.tmp" && mv "$rd/state.json.tmp" "$rd/state.json"
+  _relay_state_apply "$rd" \
+    '.run_id=$r | .generation=$g | .tmux_session=$s' \
+    --arg r "run-2026-$1" --argjson g "$3" --arg s "relay-run-2026-$1"
   printf '%s' "$rd"
 }
 mkdir -p "$(relay_root)"; chmod 700 "$(relay_root)"
@@ -31,8 +31,7 @@ bash tests/fake-supervisor.sh --run-dir "$live2_rd" >/dev/null 2>&1 & LIVE2=$!
 live2_rd="$(mk_run bbbb "$LIVE2" 1)"
 dead_rd="$(mk_run cccc 999999 2)"
 # age the dead run past the 7-day retention so list's prune reaps it
-jq '.status="stopped" | .stopped_at=(now - 8*86400 | floor)' "$dead_rd/state.json" \
-  > "$dead_rd/state.json.tmp" && mv "$dead_rd/state.json.tmp" "$dead_rd/state.json"
+_relay_state_apply "$dead_rd" '.status="stopped" | .stopped_at=(now - 8*86400 | floor)'
 trap 'kill "$LIVE1" "$LIVE2" 2>/dev/null' EXIT
 
 # --- resolver: unique prefix match ---

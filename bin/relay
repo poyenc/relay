@@ -38,9 +38,9 @@ relay_cmd_launch() {
   local auto="true"; [ "$RELAY_OPT_AUTO_CONTINUE" = "1" ] || auto="false"
   cmd="$(relay_build_launch_cmd "$RELAY_CLAUDE_BIN" "$RELAY_HOME" "${RELAY_CLAUDE_ARGS[@]+"${RELAY_CLAUDE_ARGS[@]}"}")"
   # record launch metadata the supervisor needs to actuate rotations (arg-safe via --arg)
-  jq --arg c "$cmd" --arg run "$run_id" --arg sess "$sess" --argjson auto "$auto" \
-     '.run_id=$run | .tmux_session=$sess | .auto_continue=$auto | .launch_cmd=$c' \
-     "$rd/state.json" > "$rd/state.json.tmp" && mv "$rd/state.json.tmp" "$rd/state.json"
+  _relay_state_apply "$rd" \
+    '.run_id=$run | .tmux_session=$sess | .auto_continue=$auto | .launch_cmd=$c' \
+    --arg c "$cmd" --arg run "$run_id" --arg sess "$sess" --argjson auto "$auto"
 
   # start the supervisor daemon (owns rotation + lifecycle + run-dir teardown)
   # Detach the daemon's stdio to its log - it must not write to the user's
@@ -49,8 +49,7 @@ relay_cmd_launch() {
     RELAY_ROTATE_GRACE="$RELAY_OPT_ROTATE_GRACE" RELAY_EXIT_TIMEOUT="$RELAY_OPT_EXIT_TIMEOUT" \
     "$RELAY_SUPERVISOR_BIN" --run-dir "$rd" >>"$rd/supervisor.log" 2>&1 &
   local sup=$!
-  jq --argjson pid "$sup" '.supervisor_pid=$pid' "$rd/state.json" \
-     > "$rd/state.json.tmp" && mv "$rd/state.json.tmp" "$rd/state.json"
+  _relay_state_apply "$rd" '.supervisor_pid=$pid' --argjson pid "$sup"
 
   # create the tmux session hosting claude, with RELAY_* env. Capture the id of
   # the pane we launch into so rotation/nudge target THIS pane, not whatever pane
@@ -69,8 +68,7 @@ relay_cmd_launch() {
   # respawn-pane -e, so this does not starve the next generation.
   "$RELAY_TMUX" set-environment -u -t "$sess" RELAY_RUN_DIR 2>/dev/null || true
   "$RELAY_TMUX" set-environment -u -t "$sess" RELAY_STATE 2>/dev/null || true
-  jq --arg pane "$pane" '.tmux_pane=$pane' "$rd/state.json" \
-     > "$rd/state.json.tmp" && mv "$rd/state.json.tmp" "$rd/state.json"
+  _relay_state_apply "$rd" '.tmux_pane=$pane' --arg pane "$pane"
 
   echo "relay: run $run_id started (pid $sup)."
   echo "relay: attach with:  relay --attach $run_id"
