@@ -10,4 +10,8 @@ assert_contains "$out" "/tmp/run/gen-3/handoff.ready" "marker path present"
 assert_contains "$out" "handoff skill" "PREFERRED tier mentions skill"
 assert_contains "$out" "REGENERATE" "FALLBACK regenerate-and-replace present"
 assert_contains "$out" "final action" "marker-as-final-action present"
+# team-handoff coverage: roster gate, per-seat files in the gen dir, respawn section
+assert_contains "$out" "ROSTER FIRST" "roster gate present"
+assert_contains "$out" "/tmp/run/gen-3/handoff-<seat>.md" "per-teammate path in gen dir"
+assert_contains "$out" "Respawn the team" "respawn section required for teams"
 finish
