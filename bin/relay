@@ -37,10 +37,13 @@ relay_cmd_launch() {
   relay_state_init "$rd" "$RELAY_OPT_ROTATE_AT" "$maxgen" "$maxrt" "$maxcost" 0
   local auto="true"; [ "$RELAY_OPT_AUTO_CONTINUE" = "1" ] || auto="false"
   cmd="$(relay_build_launch_cmd "$RELAY_CLAUDE_BIN" "$RELAY_HOME" "${RELAY_CLAUDE_ARGS[@]+"${RELAY_CLAUDE_ARGS[@]}"}")"
-  # record launch metadata the supervisor needs to actuate rotations (arg-safe via --arg)
+  # record launch metadata the supervisor needs to actuate rotations (arg-safe via --arg).
+  # rotate_grace/exit_timeout are persisted so `relay --stop` can size its
+  # confirmation poll to the run's actual teardown budget.
   _relay_state_apply "$rd" \
-    '.run_id=$run | .tmux_session=$sess | .auto_continue=$auto | .launch_cmd=$c' \
-    --arg c "$cmd" --arg run "$run_id" --arg sess "$sess" --argjson auto "$auto"
+    '.run_id=$run | .tmux_session=$sess | .auto_continue=$auto | .launch_cmd=$c | .rotate_grace=$grace | .exit_timeout=$etimeout' \
+    --arg c "$cmd" --arg run "$run_id" --arg sess "$sess" --argjson auto "$auto" \
+    --argjson grace "$RELAY_OPT_ROTATE_GRACE" --argjson etimeout "$RELAY_OPT_EXIT_TIMEOUT"
 
   # start the supervisor daemon (owns rotation + lifecycle + run-dir teardown)
   # Detach the daemon's stdio to its log - it must not write to the user's

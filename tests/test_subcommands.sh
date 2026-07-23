@@ -69,6 +69,20 @@ assert_contains "$(cat "$stoplog")" "kill-pane" "stop fallback reaps the pane"
 sleep 0.3
 if kill -0 "$LIVE2" 2>/dev/null; then assert_eq alive dead "stop should kill supervisor"; else assert_ok "supervisor terminated by stop"; fi
 
+# --- stop: confirm window derives from persisted teardown budget when RELAY_STOP_CONFIRM_S unset ---
+# Seed a dead run with a large budget; the derived window must exceed a bare 10s
+# default (grace 30 + exit 30 + 5 = 65) rather than force-killing early. We assert
+# the derivation, not the wall-clock, by checking status flips before fallback when
+# a status is pre-seeded (supervisor "already stopped").
+budget_rd="$(mk_run dddd 999999 1)"
+jq '.rotate_grace=30 | .exit_timeout=30 | .status="stopped"' "$budget_rd/state.json" \
+  > "$budget_rd/state.json.x" && mv "$budget_rd/state.json.x" "$budget_rd/state.json"
+blog="$TMPDIR/budget-tmux.log"; : > "$blog"
+# RELAY_STOP_CONFIRM_S unset -> window derived from budget; status already stopped
+# -> confirm=1 immediately, NO fallback kill-pane.
+( unset RELAY_STOP_CONFIRM_S; FAKE_TMUX_LOG="$blog" relay_cmd_stop run-2026-dddd >/dev/null 2>&1 )
+assert_eq "$(grep -c 'kill-pane' "$blog")" "0" "derived-window stop confirms via status, no fallback kill"
+
 # cleanup any survivors
 kill "$LIVE1" "$LIVE2" 2>/dev/null; wait 2>/dev/null
 

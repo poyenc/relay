@@ -97,7 +97,7 @@ TEE
 }
 
 relay_cmd_stop() {  # <id-or-prefix>
-  local rd sess pane target pid i confirm
+  local rd sess pane target pid i confirm grace etimeout window
   rd="$(relay_resolve_run_id "$1")" || return 1
   sess="$(relay_state_get "$rd" '.tmux_session')"
   pane="$(relay_state_get "$rd" '.tmux_pane // ""')"
@@ -107,9 +107,20 @@ relay_cmd_stop() {  # <id-or-prefix>
   # Marker mirrors the Stop-hook IPC; atomic tmp+mv.
   printf '{"reason":"user_stop"}' > "$rd/stop-run.json.tmp" 2>/dev/null \
     && mv "$rd/stop-run.json.tmp" "$rd/stop-run.json" 2>/dev/null || true
-  # Poll for confirmation (status=stopped). Bounded so --stop never hangs.
+  # Poll for confirmation (status=stopped). If RELAY_STOP_CONFIRM_S is explicitly
+  # set, honor it verbatim (override for tests / power users). Otherwise size the
+  # window to the run's teardown budget (grace + exit-timeout + margin), so a run
+  # launched with large --rotate-grace/--exit-timeout is not force-killed before
+  # graceful_teardown finishes. Bounded either way so --stop never hangs.
+  if [ -n "${RELAY_STOP_CONFIRM_S:-}" ]; then
+    window="$RELAY_STOP_CONFIRM_S"
+  else
+    grace="$(relay_state_get "$rd" '.rotate_grace // 2')"
+    etimeout="$(relay_state_get "$rd" '.exit_timeout // 5')"
+    window=$(( grace + etimeout + 5 ))
+  fi
   confirm=0
-  for i in $(seq 1 "${RELAY_STOP_CONFIRM_S:-10}"); do
+  for i in $(seq 1 "$window"); do
     [ "$(relay_state_get "$rd" '.status // ""')" = "stopped" ] && { confirm=1; break; }
     sleep 1
   done
