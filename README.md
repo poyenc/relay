@@ -135,11 +135,10 @@ going in the background; re-attach with `relay --attach`.
 
 ## Run state
 
-Each run lives under `${TMPDIR:-/tmp}/relay-$(id -u)/YYMMDD-HHMMSS-XXXXXX/`
-(per-user, mode `700`). It holds `state.json`, the supervisor log, and per-
-generation handoffs. Run dirs are **ephemeral**: deleted when the run stops, and
-dead run dirs are pruned on the next launch. Inspect handoffs *during* a run,
-not after.
+Each run lives under `${TMPDIR:-/tmp}/relay-$(id -un)/YYMMDD-HHMMSS-XXXXXX/`
+(per-user, mode `700`). It holds `state.json`, the supervisor log, per-generation
+handoffs, and a captured `pane.log` per generation. Ended run dirs **persist for
+post-mortem** and are pruned only after 7 days; a live run's dir is never pruned.
 
 ## Tests
 
