@@ -13,7 +13,17 @@ relay_pid_is_supervisor() {  # <pid> <run_dir>
   # The run dir is a unique mktemp path; its presence in the process's argv
   # (`... --run-dir <rd>`) confirms this PID is genuinely that run's supervisor.
   if [ -r "$cl" ]; then
-    tr '\0' ' ' < "$cl" 2>/dev/null | grep -qF -- "--run-dir $rd"
+    # Extract the --run-dir value from cmdline and compare resolved (canonical)
+    # paths so that symlink renames of the relay root don't break the check.
+    local cmdline_rd
+    cmdline_rd="$(tr '\0' '\n' < "$cl" 2>/dev/null | grep -A1 '^--run-dir$' | tail -1)"
+    [ -z "$cmdline_rd" ] && \
+      cmdline_rd="$(tr '\0' ' ' < "$cl" 2>/dev/null | sed -n 's/.*--run-dir \([^ ]*\).*/\1/p')"
+    [ -z "$cmdline_rd" ] && return 1
+    local real_rd real_cmdline_rd
+    real_rd="$(readlink -f "$rd" 2>/dev/null || printf '%s' "$rd")"
+    real_cmdline_rd="$(readlink -f "$cmdline_rd" 2>/dev/null || printf '%s' "$cmdline_rd")"
+    [ "$real_rd" = "$real_cmdline_rd" ]
     return $?
   fi
   # No /proc (non-Linux): degrade to the liveness-only check rather than falsely
