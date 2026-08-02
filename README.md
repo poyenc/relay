@@ -112,7 +112,7 @@ When a run starts it prints the `run_id` and the attach/stop commands.
 | `--max-runtime <dur>` | none | Cap: stop after wall-clock (`30s`, `90m`, `8h`, `2d`). |
 | `--max-cost <usd>` | none | Cap: stop after cumulative cost (API-cost mode only). |
 | `--no-auto-continue` | off | Load handoff and wait, instead of auto-continuing. |
-| `--rotation-timeout <dur>` | `120s` | Wait for the outgoing generation to hand off and settle (its post-handoff Stop) before giving up on a rotation. On timeout, a written handoff still rotates; otherwise the attempt is abandoned and retried on the next Stop. |
+| `--rotation-timeout <dur>` | `150s` | Wait for the outgoing generation to hand off and settle (its post-handoff Stop) before giving up on a rotation. On timeout, a written handoff still rotates; otherwise the attempt is abandoned and retried on the next Stop. |
 | `--rotate-grace <dur>` | `2s` | Pause before teardown so the outgoing agent's final message stays readable. |
 | `--exit-timeout <dur>` | `5s` | Wait for a clean `/exit` before force-killing the pane. |
 | `--switch` | off | When nested in tmux (e.g. byobu), switch the client to the new session on launch. Default: stay put and print the attach command. |

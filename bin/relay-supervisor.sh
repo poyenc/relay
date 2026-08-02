@@ -7,7 +7,7 @@ source "$HERE/lib/telemetry.sh"
 source "$HERE/lib/policy.sh"
 source "$HERE/lib/handoff_instruction.sh"
 
-: "${RELAY_ROTATION_TIMEOUT:=120}"
+: "${RELAY_ROTATION_TIMEOUT:=150}"
 : "${RELAY_TMUX:=tmux}"
 : "${RELAY_NUDGE_DELAY:=2}"
 # Graceful-teardown knobs (threaded in by bin/relay). GRACE: seconds to let the

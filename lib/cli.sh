@@ -36,7 +36,7 @@ Launch flags:
   --max-cost <usd>       Cap: stop after cumulative cost (API-cost mode only).
   --no-auto-continue     Load handoff and wait (default auto-continues).
   --rotation-timeout <dur> Wait for the outgoing generation to hand off and
-                         settle before giving up on a rotation (default 120s).
+                         settle before giving up on a rotation (default 150s).
   --rotate-grace <dur>   Pause before teardown so the outgoing agent's final
                          message stays readable (default 2s).
   --exit-timeout <dur>   Wait for a clean /exit before force-killing (default 5s).
@@ -72,7 +72,7 @@ relay_parse_args() {
   RELAY_OPT_MAX_GEN=""
   RELAY_OPT_MAX_RUNTIME_S=""
   RELAY_OPT_MAX_COST=""
-  RELAY_OPT_ROTATION_TIMEOUT="120"
+  RELAY_OPT_ROTATION_TIMEOUT="150"
   RELAY_OPT_ROTATE_GRACE="2"
   RELAY_OPT_EXIT_TIMEOUT="5"
   RELAY_OPT_AUTO_CONTINUE="1"

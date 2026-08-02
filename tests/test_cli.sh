@@ -18,7 +18,7 @@ relay_parse_args
 assert_eq "$?" "0" "bare parse ok"
 assert_eq "$RELAY_MODE" "launch" "bare -> launch"
 assert_eq "$RELAY_OPT_ROTATE_AT" "60" "default rotate-at 60"
-assert_eq "$RELAY_OPT_ROTATION_TIMEOUT" "120" "default rotation-timeout 120"
+assert_eq "$RELAY_OPT_ROTATION_TIMEOUT" "150" "default rotation-timeout 150"
 assert_eq "$RELAY_OPT_ROTATE_GRACE" "2" "default rotate-grace 2"
 assert_eq "$RELAY_OPT_EXIT_TIMEOUT" "5" "default exit-timeout 5"
 assert_eq "$RELAY_OPT_AUTO_CONTINUE" "1" "auto-continue on by default"
